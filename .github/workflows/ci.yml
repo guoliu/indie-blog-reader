@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typescript-tests:
+    name: TypeScript Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Create data directory
+        run: mkdir -p data
+
+      - name: Run TypeScript tests
+        run: bun test
+
+  python-tests:
+    name: Python Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          cd scraper
+          pip install feedparser aiohttp pytest pytest-asyncio
+
+      - name: Run Python tests
+        run: |
+          cd scraper
+          python -m pytest test_rss.py -v
