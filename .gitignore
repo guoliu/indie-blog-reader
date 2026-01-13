@@ -50,3 +50,6 @@ Independent Blog Circles/logs/
 Independent Blog Circles/data/*.bak
 Independent Blog Circles/data/failed.txt
 Independent Blog Circles/data/queue.txt
+
+# Git worktrees
+.worktrees/
