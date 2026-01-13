@@ -1,0 +1,21 @@
+{
+  "name": "indie-blog-reader",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "test": "bun test",
+    "migrate": "bun run scripts/migrate.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "bun-types": "^1.3.6"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "hono": "^4.11.4"
+  }
+}
