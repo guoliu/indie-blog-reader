@@ -157,12 +157,43 @@ export function createApp(dbPath: string = "data/blog-monitor.db") {
 
   // POST /api/refresh - trigger the Python scraper
   app.post("/api/refresh", async (c) => {
-    // For now, just return a status - actual scraper integration comes later
-    // In a full implementation, this would spawn a Python process
-    return c.json({
-      status: "refresh_started",
-      message: "Scraper triggered (not yet implemented)",
-    });
+    const limit = parseInt(c.req.query("limit") || "100");
+
+    try {
+      // Spawn Python scraper process
+      const proc = Bun.spawn(["python3", "scraper/main.py", "refresh", "--limit", String(limit)], {
+        cwd: process.cwd(),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+
+      const output = await new Response(proc.stdout).text();
+      const stderr = await new Response(proc.stderr).text();
+      const exitCode = await proc.exited;
+
+      if (exitCode !== 0) {
+        return c.json({
+          status: "error",
+          message: stderr || "Scraper failed",
+        }, 500);
+      }
+
+      // Parse results from output
+      const newArticlesMatch = output.match(/New articles: (\d+)/);
+      const blogsScrapedMatch = output.match(/Blogs scraped: (\d+)/);
+
+      return c.json({
+        status: "success",
+        blogs_scraped: blogsScrapedMatch ? parseInt(blogsScrapedMatch[1]) : 0,
+        new_articles: newArticlesMatch ? parseInt(newArticlesMatch[1]) : 0,
+        message: output,
+      });
+    } catch (error: any) {
+      return c.json({
+        status: "error",
+        message: error.message || "Failed to run scraper",
+      }, 500);
+    }
   });
 
   return app;
