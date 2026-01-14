@@ -196,5 +196,93 @@ export function createApp(dbPath: string = "data/blog-monitor.db") {
     }
   });
 
+  // GET /api/refresh/stream - SSE endpoint for streaming progress
+  app.get("/api/refresh/stream", async (c) => {
+    const limit = parseInt(c.req.query("limit") || "100");
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+
+        const sendEvent = (data: object) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        };
+
+        // Send start event
+        sendEvent({ type: "start", total: limit, current: 0, newArticles: 0 });
+
+        try {
+          // Spawn Python scraper with progress output
+          const proc = Bun.spawn(
+            ["python3", "scraper/main.py", "refresh", "--limit", String(limit), "--progress"],
+            {
+              cwd: process.cwd(),
+              stdout: "pipe",
+              stderr: "pipe",
+            }
+          );
+
+          // Read stdout line by line for progress updates
+          const reader = proc.stdout.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          let lastProgress = { current: 0, newArticles: 0 };
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              // Parse progress output from Python: "PROGRESS: 5/100 blogs, 3 new articles"
+              const progressMatch = line.match(/PROGRESS: (\d+)\/(\d+) blogs?, (\d+) new articles?/);
+              if (progressMatch) {
+                lastProgress = {
+                  current: parseInt(progressMatch[1]),
+                  newArticles: parseInt(progressMatch[3]),
+                };
+                sendEvent({
+                  type: "progress",
+                  total: parseInt(progressMatch[2]),
+                  current: lastProgress.current,
+                  newArticles: lastProgress.newArticles,
+                });
+              }
+            }
+          }
+
+          const exitCode = await proc.exited;
+          const stderr = await new Response(proc.stderr).text();
+
+          if (exitCode !== 0) {
+            sendEvent({ type: "error", message: stderr || "Scraper failed" });
+          } else {
+            sendEvent({
+              type: "complete",
+              total: limit,
+              current: lastProgress.current,
+              newArticles: lastProgress.newArticles,
+            });
+          }
+        } catch (error: any) {
+          sendEvent({ type: "error", message: error.message || "Failed to run scraper" });
+        }
+
+        controller.close();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
+  });
+
   return app;
 }

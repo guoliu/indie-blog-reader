@@ -8,4 +8,6 @@ console.log(`Starting Indie Blog Reader on http://localhost:${port}`);
 export default {
   port,
   fetch: app.fetch,
+  // Allow long-running requests (scraper can take minutes)
+  idleTimeout: 300,
 };

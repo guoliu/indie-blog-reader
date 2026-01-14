@@ -52,11 +52,18 @@ async def scrape_blog(blog: dict) -> dict:
     return result
 
 
-async def refresh(limit: int = 100) -> dict:
-    """Refresh articles from blogs."""
-    blogs = get_blogs_to_scrape(limit=limit)
+async def refresh(limit: int = 100, progress: bool = False) -> dict:
+    """Refresh articles from blogs.
 
-    print(f"Scraping {len(blogs)} blogs...")
+    Args:
+        limit: Maximum number of blogs to scrape
+        progress: If True, output progress in machine-parseable format for SSE
+    """
+    blogs = get_blogs_to_scrape(limit=limit)
+    total = len(blogs)
+
+    if not progress:
+        print(f"Scraping {total} blogs...")
 
     results = {
         "blogs_scraped": 0,
@@ -82,11 +89,19 @@ async def refresh(limit: int = 100) -> dict:
             if r["error"]:
                 results["errors"] += 1
 
-        # Progress update
-        print(
-            f"  Progress: {results['blogs_scraped']}/{len(blogs)} blogs, "
-            f"{results['new_articles']} new articles"
-        )
+        # Progress update - use machine-parseable format when --progress is set
+        if progress:
+            # Format: PROGRESS: <current>/<total> blogs, <new_articles> new articles
+            print(
+                f"PROGRESS: {results['blogs_scraped']}/{total} blogs, "
+                f"{results['new_articles']} new articles",
+                flush=True
+            )
+        else:
+            print(
+                f"  Progress: {results['blogs_scraped']}/{total} blogs, "
+                f"{results['new_articles']} new articles"
+            )
 
     return results
 
@@ -104,11 +119,16 @@ def main():
         default=100,
         help="Maximum number of blogs to scrape (default: 100)",
     )
+    parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="Output machine-parseable progress for SSE streaming",
+    )
 
     args = parser.parse_args()
 
     if args.command == "refresh":
-        results = asyncio.run(refresh(limit=args.limit))
+        results = asyncio.run(refresh(limit=args.limit, progress=args.progress))
         print("\nRefresh complete!")
         print(f"  Blogs scraped: {results['blogs_scraped']}")
         print(f"  Articles found: {results['articles_found']}")

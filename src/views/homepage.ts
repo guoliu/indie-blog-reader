@@ -44,6 +44,16 @@ export function renderHomepage(articles: Article[], activeFilter: string): strin
     </div>
   </header>
 
+  <!-- Progress overlay -->
+  <div id="progress-overlay" class="progress-overlay hidden">
+    <div class="progress-container">
+      <div id="progress-bar" class="progress-bar">
+        <div class="progress-fill" style="width: 0%"></div>
+      </div>
+      <p id="progress-text" class="progress-text">Refreshing...</p>
+    </div>
+  </div>
+
   <main>
     <section class="articles">
       ${articles.length > 0 ? articleCards : '<p class="empty">No articles found for this filter.</p>'}
@@ -60,21 +70,56 @@ export function renderHomepage(articles: Article[], activeFilter: string): strin
   </aside>
 
   <script>
-    // Handle refresh form with fetch
+    // Handle refresh form with SSE streaming
     document.querySelector('.refresh-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = e.target.querySelector('button');
       btn.disabled = true;
       btn.textContent = 'Refreshing...';
 
-      try {
-        await fetch('/api/refresh', { method: 'POST' });
-        location.reload();
-      } catch (err) {
-        alert('Refresh failed');
-        btn.disabled = false;
-        btn.textContent = 'Refresh';
-      }
+      const overlay = document.getElementById('progress-overlay');
+      const progressBar = document.querySelector('.progress-fill');
+      const progressText = document.getElementById('progress-text');
+
+      overlay.classList.remove('hidden');
+
+      const eventSource = new EventSource('/api/refresh/stream?limit=100');
+
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'start') {
+          progressText.textContent = 'Starting refresh...';
+          progressBar.style.width = '0%';
+        } else if (data.type === 'progress') {
+          const percent = Math.round((data.current / data.total) * 100);
+          progressBar.style.width = percent + '%';
+          progressText.textContent = 'Refreshing... ' + data.current + '/' + data.total + ' blogs (' + data.newArticles + ' new articles)';
+        } else if (data.type === 'complete') {
+          progressBar.style.width = '100%';
+          progressText.textContent = 'Done! ' + data.newArticles + ' new articles found.';
+          eventSource.close();
+          setTimeout(() => location.reload(), 1000);
+        } else if (data.type === 'error') {
+          progressText.textContent = 'Error: ' + data.message;
+          eventSource.close();
+          setTimeout(() => {
+            overlay.classList.add('hidden');
+            btn.disabled = false;
+            btn.textContent = 'Refresh';
+          }, 3000);
+        }
+      };
+
+      eventSource.onerror = () => {
+        progressText.textContent = 'Connection lost. Retrying...';
+        eventSource.close();
+        setTimeout(() => {
+          overlay.classList.add('hidden');
+          btn.disabled = false;
+          btn.textContent = 'Refresh';
+        }, 2000);
+      };
     });
 
     // Handle add blog form
