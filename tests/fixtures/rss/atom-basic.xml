@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <title>Test Blog</title>
+    <entry>
+        <title>Atom Article</title>
+        <link href="https://example.com/atom-post"/>
+        <summary>Atom article summary.</summary>
+        <published>2025-01-13T10:00:00Z</published>
+    </entry>
+</feed>

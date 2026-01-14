@@ -10,7 +10,10 @@ export function createSchema(db: Database): void {
       ssg TEXT,
       comment_system TEXT,
       rss_url TEXT,
+      languages TEXT DEFAULT '["zh"]',
       last_scraped_at TEXT,
+      error_count INTEGER DEFAULT 0,
+      last_error TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -23,6 +26,7 @@ export function createSchema(db: Database): void {
       title TEXT,
       description TEXT,
       cover_image TEXT,
+      language TEXT,
       published_at TEXT,
       discovered_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
@@ -41,7 +45,8 @@ export function createSchema(db: Database): void {
     CREATE TABLE IF NOT EXISTS circles (
       id INTEGER PRIMARY KEY,
       name TEXT NOT NULL,
-      url TEXT
+      url TEXT,
+      languages TEXT DEFAULT '["zh"]'
     )
   `);
 
@@ -62,10 +67,54 @@ export function createSchema(db: Database): void {
     )
   `);
 
+  // New tables for background indexing
+
+  // Crawl state - singleton row for tracking crawl position
+  db.run(`
+    CREATE TABLE IF NOT EXISTS crawl_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      current_blog_id INTEGER,
+      last_crawl_at TEXT,
+      is_running INTEGER DEFAULT 0
+    )
+  `);
+
+  // Initialize crawl_state if empty
+  db.run(`INSERT OR IGNORE INTO crawl_state (id) VALUES (1)`);
+
+  // Seed sources for discovering new blogs
+  db.run(`
+    CREATE TABLE IF NOT EXISTS seed_sources (
+      id INTEGER PRIMARY KEY,
+      url TEXT UNIQUE NOT NULL,
+      name TEXT,
+      type TEXT NOT NULL,
+      languages TEXT DEFAULT '["zh"]',
+      last_scraped_at TEXT,
+      member_count INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Discovery queue for new blogs found via friend links/circles
+  db.run(`
+    CREATE TABLE IF NOT EXISTS discovery_queue (
+      id INTEGER PRIMARY KEY,
+      url TEXT UNIQUE NOT NULL,
+      discovered_from_blog_id INTEGER REFERENCES blogs(id),
+      discovery_type TEXT,
+      priority INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Create indexes for common queries
   db.run("CREATE INDEX IF NOT EXISTS idx_articles_blog_id ON articles(blog_id)");
   db.run("CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_articles_language ON articles(language)");
   db.run("CREATE INDEX IF NOT EXISTS idx_comment_snapshots_article_id ON comment_snapshots(article_id)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_blogs_last_scraped_at ON blogs(last_scraped_at)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_discovery_queue_priority ON discovery_queue(priority DESC)");
 }
 
 interface BlogJsonl {

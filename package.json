@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "test": "bun test",
+    "test:e2e": "playwright test",
     "migrate": "bun run scripts/migrate.ts"
   },
   "devDependencies": {

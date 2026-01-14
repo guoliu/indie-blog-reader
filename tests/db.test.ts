@@ -42,6 +42,10 @@ describe("Database Schema", () => {
     expect(tableNames).toContain("circles");
     expect(tableNames).toContain("blog_circles");
     expect(tableNames).toContain("friend_links");
+    // New tables for v2
+    expect(tableNames).toContain("crawl_state");
+    expect(tableNames).toContain("seed_sources");
+    expect(tableNames).toContain("discovery_queue");
   });
 
   test("blogs table has correct columns", async () => {
@@ -59,7 +63,10 @@ describe("Database Schema", () => {
     expect(columnNames).toContain("ssg");
     expect(columnNames).toContain("comment_system");
     expect(columnNames).toContain("rss_url");
+    expect(columnNames).toContain("languages");
     expect(columnNames).toContain("last_scraped_at");
+    expect(columnNames).toContain("error_count");
+    expect(columnNames).toContain("last_error");
     expect(columnNames).toContain("created_at");
   });
 
@@ -78,8 +85,60 @@ describe("Database Schema", () => {
     expect(columnNames).toContain("title");
     expect(columnNames).toContain("description");
     expect(columnNames).toContain("cover_image");
+    expect(columnNames).toContain("language");
     expect(columnNames).toContain("published_at");
     expect(columnNames).toContain("discovered_at");
+  });
+
+  test("crawl_state table is initialized", async () => {
+    const { createSchema } = await import("../src/db");
+    db = new Database(TEST_DB_PATH);
+
+    createSchema(db);
+
+    const state = db.query("SELECT * FROM crawl_state WHERE id = 1").get() as {
+      id: number;
+      current_blog_id: number | null;
+      is_running: number;
+    } | null;
+
+    expect(state).not.toBeNull();
+    expect(state!.id).toBe(1);
+    expect(state!.is_running).toBe(0);
+  });
+
+  test("seed_sources table has correct columns", async () => {
+    const { createSchema } = await import("../src/db");
+    db = new Database(TEST_DB_PATH);
+
+    createSchema(db);
+
+    const columns = db.query("PRAGMA table_info(seed_sources)").all() as { name: string }[];
+    const columnNames = columns.map(c => c.name);
+
+    expect(columnNames).toContain("id");
+    expect(columnNames).toContain("url");
+    expect(columnNames).toContain("name");
+    expect(columnNames).toContain("type");
+    expect(columnNames).toContain("languages");
+    expect(columnNames).toContain("last_scraped_at");
+    expect(columnNames).toContain("member_count");
+  });
+
+  test("discovery_queue table has correct columns", async () => {
+    const { createSchema } = await import("../src/db");
+    db = new Database(TEST_DB_PATH);
+
+    createSchema(db);
+
+    const columns = db.query("PRAGMA table_info(discovery_queue)").all() as { name: string }[];
+    const columnNames = columns.map(c => c.name);
+
+    expect(columnNames).toContain("id");
+    expect(columnNames).toContain("url");
+    expect(columnNames).toContain("discovered_from_blog_id");
+    expect(columnNames).toContain("discovery_type");
+    expect(columnNames).toContain("priority");
   });
 
   test("blog url must be unique", async () => {

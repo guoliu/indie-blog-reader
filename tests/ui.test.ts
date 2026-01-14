@@ -39,7 +39,8 @@ describe("UI Rendering", () => {
     );
 
     const { createApp } = await import("../src/app");
-    app = createApp(TEST_DB_PATH);
+    const result = createApp({ dbPath: TEST_DB_PATH });
+    app = result.app;
   });
 
   afterAll(() => {
@@ -66,12 +67,14 @@ describe("UI Rendering", () => {
     expect(html).toContain("This is a test description");
   });
 
-  test("homepage contains refresh button", async () => {
+  test("homepage contains language switcher", async () => {
     const res = await app.request("/");
     const html = await res.text();
 
-    // Should have a refresh button/form
-    expect(html).toMatch(/refresh/i);
+    // Should have language switching options
+    expect(html).toContain("language-switcher");
+    expect(html).toContain("中文");
+    expect(html).toContain("English");
   });
 
   test("homepage contains filter tabs", async () => {
@@ -120,7 +123,8 @@ describe("Static Assets", () => {
     db.close();
 
     const { createApp } = await import("../src/app");
-    app = createApp(TEST_DB_PATH);
+    const result = createApp({ dbPath: TEST_DB_PATH });
+    app = result.app;
   });
 
   afterAll(() => {
