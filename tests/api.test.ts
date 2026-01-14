@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { Database } from "bun:sqlite";
 import { existsSync, unlinkSync } from "fs";
+import { getTodayNYC } from "../src/utils";
 
 const TEST_DB_PATH = "data/test-api.db";
 
@@ -32,8 +33,11 @@ describe("Articles API", () => {
     ]);
 
     // Insert articles - one from today, one older
-    const today = new Date().toISOString().split("T")[0];
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+    const today = getTodayNYC();
+    // Calculate yesterday in NYC timezone
+    const yesterdayDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterday = yesterdayDate.toISOString().split("T")[0];
 
     db.run(
       "INSERT INTO articles (blog_id, url, title, description, cover_image, published_at) VALUES (?, ?, ?, ?, ?, ?)",

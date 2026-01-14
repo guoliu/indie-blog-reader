@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { Database } from "bun:sqlite";
 import { existsSync, unlinkSync } from "fs";
+import { getTodayNYC } from "../src/utils";
 
 const TEST_DB_PATH = "data/test-ui.db";
 
@@ -24,7 +25,7 @@ describe("UI Rendering", () => {
       "hexo",
     ]);
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayNYC();
     db.run(
       "INSERT INTO articles (blog_id, url, title, description, cover_image, published_at) VALUES (?, ?, ?, ?, ?, ?)",
       [

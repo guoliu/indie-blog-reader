@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import { serveStatic } from "hono/bun";
 import { createSchema } from "./db";
 import { renderHomepage } from "./views/homepage";
+import { getTodayNYC } from "./utils";
 
 export function createApp(dbPath: string = "data/blog-monitor.db") {
   const app = new Hono();
@@ -15,7 +16,7 @@ export function createApp(dbPath: string = "data/blog-monitor.db") {
   // Homepage - render HTML with articles
   app.get("/", (c) => {
     const filter = c.req.query("filter") || "today";
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayNYC();
 
     let query: string;
     let params: any[] = [];
@@ -59,7 +60,7 @@ export function createApp(dbPath: string = "data/blog-monitor.db") {
   // GET /api/articles - list articles with optional filters
   app.get("/api/articles", (c) => {
     const filter = c.req.query("filter");
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayNYC();
 
     let query: string;
     let params: any[] = [];
