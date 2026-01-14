@@ -7,6 +7,7 @@ export interface Article {
   url: string;
   description: string;
   cover_image: string | null;
+  language: string | null;
   published_at: string | null;
 }
 

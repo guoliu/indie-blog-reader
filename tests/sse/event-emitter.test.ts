@@ -67,6 +67,7 @@ describe("ArticleEventEmitter", () => {
       url: "https://example.com/post",
       description: "Test description",
       cover_image: null,
+      language: null,
       published_at: "2025-01-14",
     };
 
@@ -181,6 +182,7 @@ describe("ArticleEventEmitter", () => {
       url: "https://zh.example.com/post",
       description: "中文描述",
       cover_image: null,
+      language: "zh",
       published_at: "2025-01-14",
     };
 

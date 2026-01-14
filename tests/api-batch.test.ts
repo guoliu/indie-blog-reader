@@ -48,7 +48,7 @@ describe("Batch Indexer API", () => {
     const res = await app.request("/api/batch/status");
     expect(res.status).toBe(200);
 
-    const data = await res.json();
+    const data = (await res.json()) as { isRunning: boolean };
     // isRunning should be a boolean
     expect(typeof data.isRunning).toBe("boolean");
   });
@@ -62,7 +62,7 @@ describe("Batch Indexer API", () => {
     });
     expect(res.status).toBe(200);
 
-    const data = await res.json();
+    const data = (await res.json()) as { status: string };
     expect(data.status).toBe("started");
 
     // Wait for batch to complete
@@ -70,7 +70,7 @@ describe("Batch Indexer API", () => {
 
     // Check status shows stats
     const statusRes = await app.request("/api/batch/status");
-    const statusData = await statusRes.json();
+    const statusData = (await statusRes.json()) as { stats: unknown };
     expect(statusData.stats).not.toBeNull();
   });
 

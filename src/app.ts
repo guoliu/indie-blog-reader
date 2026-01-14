@@ -296,11 +296,7 @@ export function createApp(options: AppOptions = {}) {
         console.log(`[BatchIndexer] New article: "${article.title}" from ${blog.name || blog.url}`);
         // Emit SSE event if eventEmitter is available
         if (eventEmitter) {
-          eventEmitter.emitNewArticle({
-            ...article,
-            blog_name: blog.name || blog.url,
-            blog_url: blog.url,
-          });
+          eventEmitter.emitNewArticle(article, blog);
         }
       },
       onError: (blog, error) => {
@@ -416,11 +412,7 @@ export function createApp(options: AppOptions = {}) {
             });
             // Also emit to main event emitter
             if (eventEmitter) {
-              eventEmitter.emitNewArticle({
-                ...article,
-                blog_name: blog.name || blog.url,
-                blog_url: blog.url,
-              });
+              eventEmitter.emitNewArticle(article, blog);
             }
           },
           onError: (blog, error) => {
