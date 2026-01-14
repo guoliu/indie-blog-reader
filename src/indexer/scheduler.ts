@@ -46,6 +46,8 @@ export class BlogIndexer {
   private events: IndexerEvents;
   private interval: ReturnType<typeof setInterval> | null = null;
   private stats: IndexerStats;
+  private pendingCrawl: Promise<void> | null = null;
+  private isStopping: boolean = false;
 
   constructor(
     db: Database,
@@ -71,13 +73,14 @@ export class BlogIndexer {
   start(): void {
     if (this.interval) return; // Already running
 
+    this.isStopping = false;
     this.stats.isRunning = true;
     this.updateCrawlState(true);
 
     // Run immediately, then at interval
-    this.crawlNextBlog();
+    this.scheduleCrawl();
     this.interval = setInterval(
-      () => this.crawlNextBlog(),
+      () => this.scheduleCrawl(),
       this.config.crawlIntervalMs
     );
 
@@ -87,9 +90,19 @@ export class BlogIndexer {
   }
 
   /**
+   * Schedule a crawl operation, tracking the pending promise.
+   */
+  private scheduleCrawl(): void {
+    if (this.isStopping) return;
+    this.pendingCrawl = this.crawlNextBlog();
+  }
+
+  /**
    * Stop background indexing.
    */
   stop(): void {
+    this.isStopping = true;
+
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
@@ -99,6 +112,21 @@ export class BlogIndexer {
     this.updateCrawlState(false);
 
     console.log("[Indexer] Stopped");
+  }
+
+  /**
+   * Wait for any pending crawl operations to complete.
+   * Useful for clean shutdown in tests.
+   */
+  async waitForPendingOperations(): Promise<void> {
+    if (this.pendingCrawl) {
+      try {
+        await this.pendingCrawl;
+      } catch {
+        // Ignore errors - just wait for completion
+      }
+      this.pendingCrawl = null;
+    }
   }
 
   /**
@@ -112,6 +140,9 @@ export class BlogIndexer {
    * Crawl the next blog in the queue.
    */
   private async crawlNextBlog(): Promise<void> {
+    // Check if we're stopping before starting new work
+    if (this.isStopping) return;
+
     const blog = this.getNextBlogToCrawl();
 
     if (!blog) {
@@ -128,6 +159,9 @@ export class BlogIndexer {
         this.config.fetchTimeoutMs
       );
 
+      // Check if stopping before DB operations
+      if (this.isStopping) return;
+
       const newCount = this.saveArticles(blog.id, articles);
       this.stats.newArticlesFound += newCount;
       this.stats.totalBlogsIndexed++;
@@ -143,11 +177,15 @@ export class BlogIndexer {
       }
     } catch (error) {
       this.stats.errorsEncountered++;
-      this.updateBlogAfterCrawl(
-        blog.id,
-        false,
-        error instanceof Error ? error.message : "Unknown error"
-      );
+
+      // Check if stopping before DB operations
+      if (!this.isStopping) {
+        this.updateBlogAfterCrawl(
+          blog.id,
+          false,
+          error instanceof Error ? error.message : "Unknown error"
+        );
+      }
 
       if (this.events.onError) {
         this.events.onError(
@@ -159,6 +197,9 @@ export class BlogIndexer {
 
     this.stats.lastCrawlAt = new Date().toISOString();
     this.stats.currentBlogUrl = null;
+
+    // Skip DB updates if we're stopping (DB may be closed)
+    if (this.isStopping) return;
 
     // Update crawl state
     this.updateCrawlCursor(blog.id);
