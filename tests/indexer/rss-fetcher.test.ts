@@ -267,6 +267,80 @@ describe("RSS Discovery from HTML", () => {
   });
 });
 
+describe("URL Resolution", () => {
+  test("resolves relative URLs in article links", () => {
+    const content = `<?xml version="1.0"?>
+      <rss version="2.0">
+        <channel>
+          <item>
+            <title>Post</title>
+            <link>/blog/post-1</link>
+          </item>
+        </channel>
+      </rss>`;
+    const articles = parseRssContent(content, "https://example.com");
+    expect(first(articles).url).toBe("https://example.com/blog/post-1");
+  });
+
+  test("resolves protocol-relative URLs", () => {
+    const content = `<?xml version="1.0"?>
+      <rss version="2.0">
+        <channel>
+          <item>
+            <title>Post</title>
+            <link>//cdn.example.com/post</link>
+          </item>
+        </channel>
+      </rss>`;
+    const articles = parseRssContent(content, "https://example.com");
+    expect(first(articles).url).toBe("https://cdn.example.com/post");
+  });
+
+  test("keeps absolute URLs unchanged", () => {
+    const content = `<?xml version="1.0"?>
+      <rss version="2.0">
+        <channel>
+          <item>
+            <title>Post</title>
+            <link>https://other.com/post</link>
+          </item>
+        </channel>
+      </rss>`;
+    const articles = parseRssContent(content, "https://example.com");
+    expect(first(articles).url).toBe("https://other.com/post");
+  });
+
+  test("handles quartz-style paths", () => {
+    // Quartz (https://quartz.jzhao.xyz) sometimes outputs paths like /04_Archive/post
+    const content = `<?xml version="1.0"?>
+      <rss version="2.0">
+        <channel>
+          <item>
+            <title>Archive Post</title>
+            <link>/04_Archive/some-post</link>
+          </item>
+        </channel>
+      </rss>`;
+    const articles = parseRssContent(content, "https://quartz.jzhao.xyz");
+    expect(first(articles).url).toBe("https://quartz.jzhao.xyz/04_Archive/some-post");
+  });
+
+  test("resolves relative image URLs in cover_image", () => {
+    const content = `<?xml version="1.0"?>
+      <rss version="2.0">
+        <channel>
+          <item>
+            <title>Post</title>
+            <link>https://example.com/post</link>
+            <description><![CDATA[<img src="/images/cover.jpg">]]></description>
+          </item>
+        </channel>
+      </rss>`;
+    const articles = parseRssContent(content, "https://example.com");
+    expect(first(articles).cover_image).toBe("https://example.com/images/cover.jpg");
+  });
+});
+
 describe("Edge Cases", () => {
   test("handles empty feed", () => {
     const content = `<?xml version="1.0"?>

@@ -89,25 +89,32 @@ describe("Articles API", () => {
     expect(data.articles.length).toBe(3);
   });
 
-  test("GET /api/articles?filter=today returns only today's articles", async () => {
-    const res = await app.request("/api/articles?filter=today");
+  test("GET /api/articles?filter=latest returns all articles ordered by published_at DESC", async () => {
+    const res = await app.request("/api/articles?filter=latest");
     expect(res.status).toBe(200);
 
     const data = await res.json();
     expect(data.articles).toBeArray();
-    expect(data.articles.length).toBe(2);
-    expect(data.articles.every((a: any) => a.title.includes("Today"))).toBe(true);
+    // Should return ALL articles in the database
+    expect(data.articles.length).toBe(3);
+    // Should be ordered by published_at DESC (today's articles first)
+    const dates = data.articles.map((a: any) => a.published_at);
+    for (let i = 1; i < dates.length; i++) {
+      expect(dates[i - 1] >= dates[i]).toBe(true);
+    }
   });
 
-  test("GET /api/articles?filter=comments returns articles with new comments", async () => {
+  test("GET /api/articles?filter=comments returns articles ordered by newest comment", async () => {
     const res = await app.request("/api/articles?filter=comments");
     expect(res.status).toBe(200);
 
     const data = await res.json();
     expect(data.articles).toBeArray();
-    // Post 2 has new comments (went from 5 to 7)
+    // Post 2 has comments, should be returned
     expect(data.articles.length).toBeGreaterThanOrEqual(1);
     expect(data.articles[0].title).toBe("Yesterday's Post");
+    // Should include latest_comment_at field for ordering
+    expect(data.articles[0].latest_comment_at).toBeDefined();
   });
 
   test("articles include blog name in response", async () => {

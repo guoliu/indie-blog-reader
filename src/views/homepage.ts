@@ -34,7 +34,7 @@ export function renderHomepage(
   // Build URLs with current filter and language
   const buildUrl = (filter: string, lang?: string) => {
     const params = new URLSearchParams();
-    if (filter !== "today") params.set("filter", filter);
+    if (filter !== "latest") params.set("filter", filter);
     if (lang) params.set("lang", lang);
     const queryString = params.toString();
     return queryString ? `/?${queryString}` : "/";
@@ -52,7 +52,7 @@ export function renderHomepage(
   <header>
     <h1>Indie Blog Reader</h1>
     <nav class="filters">
-      <a href="${buildUrl("today", activeLang)}" class="${activeFilter === "today" ? "active" : ""}">New Today</a>
+      <a href="${buildUrl("latest", activeLang)}" class="${activeFilter === "latest" ? "active" : ""}">Latest</a>
       <a href="${buildUrl("comments", activeLang)}" class="${activeFilter === "comments" ? "active" : ""}">New Comments</a>
     </nav>
     <nav class="language-switcher">
@@ -62,10 +62,11 @@ export function renderHomepage(
     </nav>
   </header>
 
-  <!-- Live update indicator -->
+  <!-- Live update indicator with progress -->
   <div id="live-indicator" class="live-indicator">
     <span class="live-dot"></span>
     <span class="live-text">Live</span>
+    <span id="indexer-progress" class="indexer-progress"></span>
   </div>
 
   <main>
@@ -102,17 +103,16 @@ export function renderHomepage(
         document.getElementById('live-indicator').classList.add('connected');
       };
 
-      eventSource.onmessage = (event) => {
+      // Listen for specific event types
+      eventSource.addEventListener('new_article', (event) => {
         const data = JSON.parse(event.data);
+        prependArticle(data.article, data.blog);
+      });
 
-        if (data.type === 'new_article') {
-          // Prepend new article card to the feed
-          prependArticle(data.data.article, data.data.blog);
-        } else if (data.type === 'indexer_progress') {
-          // Could show indexing progress in status bar
-          console.log('Indexer progress:', data.data);
-        }
-      };
+      eventSource.addEventListener('indexer_progress', (event) => {
+        const data = JSON.parse(event.data);
+        updateProgress(data);
+      });
 
       eventSource.onerror = () => {
         console.log('SSE disconnected');
@@ -124,6 +124,20 @@ export function renderHomepage(
           setTimeout(connectSSE, reconnectDelay * reconnectAttempts);
         }
       };
+    }
+
+    function updateProgress(progress) {
+      const el = document.getElementById('indexer-progress');
+      if (!el) return;
+
+      if (progress.isRunning) {
+        const pct = progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
+        const current = progress.currentBlog ? ' · ' + truncate(progress.currentBlog, 30) : '';
+        el.textContent = pct + '% (' + progress.processed + '/' + progress.total + ')' + current;
+        el.style.display = 'inline';
+      } else {
+        el.style.display = 'none';
+      }
     }
 
     function prependArticle(article, blog) {

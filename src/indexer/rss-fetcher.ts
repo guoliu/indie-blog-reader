@@ -41,10 +41,39 @@ export function getRssPathsForSsg(ssg: string): string[] {
 }
 
 /**
+ * Resolve a URL relative to a base URL.
+ * Handles relative paths, protocol-relative URLs, and absolute URLs.
+ */
+function resolveUrl(url: string, baseUrl?: string): string {
+  if (!url || !baseUrl) return url;
+
+  // Already absolute URL
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return url;
+  }
+
+  try {
+    // Protocol-relative URL
+    if (url.startsWith("//")) {
+      const baseProtocol = baseUrl.startsWith("https") ? "https:" : "http:";
+      return baseProtocol + url;
+    }
+
+    // Relative URL - resolve against base
+    const base = new URL(baseUrl);
+    return new URL(url, base).href;
+  } catch {
+    return url;
+  }
+}
+
+/**
  * Parse RSS/Atom feed content and extract articles.
  * This is a lightweight parser that handles common RSS/Atom formats.
+ * @param content - The RSS/Atom feed XML content
+ * @param baseUrl - Optional base URL for resolving relative URLs
  */
-export function parseRssContent(content: string): Article[] {
+export function parseRssContent(content: string, baseUrl?: string): Article[] {
   const articles: Article[] = [];
 
   // Determine feed type and extract items
@@ -52,9 +81,11 @@ export function parseRssContent(content: string): Article[] {
   const items = isAtom ? extractAtomEntries(content) : extractRssItems(content);
 
   for (const item of items) {
+    const rawUrl = isAtom ? extractAtomLink(item) : extractTagContent(item, "link") || "";
+
     const article: Article = {
       title: extractTagContent(item, isAtom ? "title" : "title") || "",
-      url: isAtom ? extractAtomLink(item) : extractTagContent(item, "link") || "",
+      url: resolveUrl(rawUrl, baseUrl),
       description: "",
       cover_image: null,
       language: null,
@@ -80,14 +111,14 @@ export function parseRssContent(content: string): Article[] {
     // Extract cover image from media:thumbnail
     const mediaThumbnail = extractMediaThumbnail(item);
     if (mediaThumbnail) {
-      article.cover_image = mediaThumbnail;
+      article.cover_image = resolveUrl(mediaThumbnail, baseUrl);
     }
 
     // Extract cover image from enclosure (if image type)
     if (!article.cover_image) {
       const enclosureImage = extractEnclosureImage(item);
       if (enclosureImage) {
-        article.cover_image = enclosureImage;
+        article.cover_image = resolveUrl(enclosureImage, baseUrl);
       }
     }
 
@@ -95,7 +126,7 @@ export function parseRssContent(content: string): Article[] {
     if (!article.cover_image) {
       const contentImage = extractContentImage(item);
       if (contentImage) {
-        article.cover_image = contentImage;
+        article.cover_image = resolveUrl(contentImage, baseUrl);
       }
     }
 
@@ -260,7 +291,8 @@ export async function fetchRss(
         const content = await response.text();
         // Quick check if it looks like RSS/XML
         if (content.includes("<?xml") || content.includes("<rss") || content.includes("<feed")) {
-          return parseRssContent(content);
+          // Pass baseUrl for resolving relative URLs in the feed
+          return parseRssContent(content, baseUrl);
         }
       }
     } catch {

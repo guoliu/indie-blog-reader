@@ -3,7 +3,6 @@ import { Database } from "bun:sqlite";
 import { serveStatic } from "hono/bun";
 import { createSchema } from "./db";
 import { renderHomepage } from "./views/homepage";
-import { getTodayNYC } from "./utils";
 import {
   ArticleEventEmitter,
   createSSEStream,
@@ -28,107 +27,35 @@ export function createApp(options: AppOptions = {}) {
   app.use("/style.css", serveStatic({ path: "./public/style.css" }));
 
   // Homepage - render HTML with articles
-  // Supports ?filter=today|comments and ?lang=zh|en for language filtering
+  // Supports ?filter=latest|comments and ?lang=zh|en for language filtering
   app.get("/", (c) => {
-    const filter = c.req.query("filter") || "today";
+    const filter = c.req.query("filter") || "latest";
     const lang = c.req.query("lang"); // Optional language filter
-    const today = getTodayNYC();
 
     // Build language filter clause - matches if blog's languages JSON array contains the lang
     const langClause = lang ? `AND b.languages LIKE '%"${lang}"%'` : "";
 
     let query: string;
-    let params: any[] = [];
 
     if (filter === "comments") {
-      query = `
-        SELECT
-          a.id, a.url, a.title, a.description, a.cover_image, a.published_at,
-          b.name as blog_name, b.url as blog_url, b.languages as blog_languages
-        FROM articles a
-        JOIN blogs b ON a.blog_id = b.id
-        JOIN comment_snapshots latest ON a.id = latest.article_id
-        LEFT JOIN comment_snapshots prev ON a.id = prev.article_id
-          AND prev.snapshot_at < latest.snapshot_at
-        WHERE latest.snapshot_at LIKE ?
-          ${langClause}
-          AND (prev.comment_count IS NULL OR latest.comment_count > prev.comment_count)
-        GROUP BY a.id
-        ORDER BY a.published_at DESC
-      `;
-      params = [`${today}%`];
-    } else {
-      // Default: today's articles
-      query = `
-        SELECT
-          a.id, a.url, a.title, a.description, a.cover_image, a.published_at,
-          b.name as blog_name, b.url as blog_url, b.languages as blog_languages
-        FROM articles a
-        JOIN blogs b ON a.blog_id = b.id
-        WHERE a.published_at LIKE ?
-        ${langClause}
-        ORDER BY a.published_at DESC
-      `;
-      params = [`${today}%`];
-    }
-
-    const articles = db.query(query).all(...params) as any[];
-
-    const html = renderHomepage(articles, filter, lang);
-    return c.html(html);
-  });
-
-  // GET /api/articles - list articles with optional filters
-  // Supports ?filter=today|comments and ?lang=zh|en for language filtering
-  app.get("/api/articles", (c) => {
-    const filter = c.req.query("filter");
-    const lang = c.req.query("lang"); // Optional language filter
-    const today = getTodayNYC();
-
-    // Build language filter clause - matches if blog's languages JSON array contains the lang
-    // e.g., for lang=zh, matches blogs where languages LIKE '%"zh"%'
-    const langClause = lang ? `AND b.languages LIKE '%"${lang}"%'` : "";
-
-    let query: string;
-    let params: any[] = [];
-
-    if (filter === "today") {
-      // Articles published today
-      query = `
-        SELECT
-          a.id, a.url, a.title, a.description, a.cover_image, a.published_at,
-          b.name as blog_name, b.url as blog_url, b.languages as blog_languages
-        FROM articles a
-        JOIN blogs b ON a.blog_id = b.id
-        WHERE a.published_at LIKE ?
-        ${langClause}
-        ORDER BY a.published_at DESC
-      `;
-      params = [`${today}%`];
-    } else if (filter === "comments") {
-      // Articles with new comments today
-      // Compare latest snapshot to previous snapshot
+      // Articles ordered by newest comment (most recent comment first)
       query = `
         SELECT
           a.id, a.url, a.title, a.description, a.cover_image, a.published_at,
           b.name as blog_name, b.url as blog_url, b.languages as blog_languages,
-          latest.comment_count as current_comments,
-          prev.comment_count as previous_comments
+          MAX(cs.snapshot_at) as latest_comment_at,
+          (SELECT comment_count FROM comment_snapshots WHERE article_id = a.id ORDER BY snapshot_at DESC LIMIT 1) as comment_count
         FROM articles a
         JOIN blogs b ON a.blog_id = b.id
-        JOIN comment_snapshots latest ON a.id = latest.article_id
-        LEFT JOIN comment_snapshots prev ON a.id = prev.article_id
-          AND prev.snapshot_at < latest.snapshot_at
-        WHERE latest.snapshot_at LIKE ?
-          ${langClause}
-          AND (prev.comment_count IS NULL OR latest.comment_count > prev.comment_count)
+        JOIN comment_snapshots cs ON a.id = cs.article_id
+        WHERE 1=1
+        ${langClause}
         GROUP BY a.id
-        HAVING latest.snapshot_at = MAX(latest.snapshot_at)
-        ORDER BY (latest.comment_count - COALESCE(prev.comment_count, 0)) DESC
+        ORDER BY latest_comment_at DESC
+        LIMIT 100
       `;
-      params = [`${today}%`];
     } else {
-      // All articles
+      // Default: all articles ordered by published_at DESC
       query = `
         SELECT
           a.id, a.url, a.title, a.description, a.cover_image, a.published_at,
@@ -138,10 +65,74 @@ export function createApp(options: AppOptions = {}) {
         WHERE 1=1
         ${langClause}
         ORDER BY a.published_at DESC
+        LIMIT 100
       `;
     }
 
-    const articles = db.query(query).all(...params);
+    const articles = db.query(query).all() as any[];
+
+    const html = renderHomepage(articles, filter, lang);
+    return c.html(html);
+  });
+
+  // GET /api/articles - list articles with optional filters
+  // Supports ?filter=latest|comments and ?lang=zh|en for language filtering
+  app.get("/api/articles", (c) => {
+    const filter = c.req.query("filter");
+    const lang = c.req.query("lang"); // Optional language filter
+
+    // Build language filter clause - matches if blog's languages JSON array contains the lang
+    // e.g., for lang=zh, matches blogs where languages LIKE '%"zh"%'
+    const langClause = lang ? `AND b.languages LIKE '%"${lang}"%'` : "";
+
+    let query: string;
+
+    if (filter === "latest") {
+      // All articles ordered by published_at DESC
+      query = `
+        SELECT
+          a.id, a.url, a.title, a.description, a.cover_image, a.published_at,
+          b.name as blog_name, b.url as blog_url, b.languages as blog_languages
+        FROM articles a
+        JOIN blogs b ON a.blog_id = b.id
+        WHERE 1=1
+        ${langClause}
+        ORDER BY a.published_at DESC
+        LIMIT 100
+      `;
+    } else if (filter === "comments") {
+      // Articles ordered by newest comment (most recent comment first)
+      query = `
+        SELECT
+          a.id, a.url, a.title, a.description, a.cover_image, a.published_at,
+          b.name as blog_name, b.url as blog_url, b.languages as blog_languages,
+          MAX(cs.snapshot_at) as latest_comment_at,
+          (SELECT comment_count FROM comment_snapshots WHERE article_id = a.id ORDER BY snapshot_at DESC LIMIT 1) as comment_count
+        FROM articles a
+        JOIN blogs b ON a.blog_id = b.id
+        JOIN comment_snapshots cs ON a.id = cs.article_id
+        WHERE 1=1
+        ${langClause}
+        GROUP BY a.id
+        ORDER BY latest_comment_at DESC
+        LIMIT 100
+      `;
+    } else {
+      // Default: all articles ordered by published_at DESC
+      query = `
+        SELECT
+          a.id, a.url, a.title, a.description, a.cover_image, a.published_at,
+          b.name as blog_name, b.url as blog_url, b.languages as blog_languages
+        FROM articles a
+        JOIN blogs b ON a.blog_id = b.id
+        WHERE 1=1
+        ${langClause}
+        ORDER BY a.published_at DESC
+        LIMIT 100
+      `;
+    }
+
+    const articles = db.query(query).all();
 
     return c.json({ articles });
   });
@@ -245,11 +236,27 @@ export function createApp(options: AppOptions = {}) {
 
     console.log(`[API] Starting batch indexer: concurrency=${concurrency}, timeout=${timeout}ms`);
 
+    let currentBlog: string | null = null;
+
     activeBatchIndexer = new BatchIndexer(db, {
       concurrency,
       fetchTimeoutMs: timeout,
+      onBlogStart: (blog) => {
+        currentBlog = blog.name || blog.url;
+      },
       onProgress: (stats) => {
         console.log(`[BatchIndexer] Progress: ${stats.processed}/${stats.total} (${stats.succeeded} ok, ${stats.failed} err, ${stats.newArticlesFound} new)`);
+        // Emit progress to SSE clients
+        if (eventEmitter) {
+          eventEmitter.emitProgress({
+            isRunning: stats.processed < stats.total && !stats.cancelled,
+            total: stats.total,
+            processed: stats.processed,
+            newArticlesFound: stats.newArticlesFound,
+            errorsEncountered: stats.failed,
+            currentBlog,
+          });
+        }
       },
       onNewArticle: (article, blog) => {
         console.log(`[BatchIndexer] New article: "${article.title}" from ${blog.name || blog.url}`);

@@ -31,7 +31,7 @@ describe("Live Update Integration", () => {
     }
   });
 
-  test("Homepage includes live update indicator", async () => {
+  test("Homepage includes live update indicator with progress element", async () => {
     const res = await app.request("/");
     expect(res.status).toBe(200);
 
@@ -39,6 +39,8 @@ describe("Live Update Integration", () => {
     expect(html).toContain('id="live-indicator"');
     expect(html).toContain("live-dot");
     expect(html).toContain("Live");
+    // Progress indicator element for batch indexer
+    expect(html).toContain('id="indexer-progress"');
   });
 
   test("Homepage includes SSE JavaScript for live updates", async () => {

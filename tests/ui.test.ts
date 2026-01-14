@@ -82,7 +82,7 @@ describe("UI Rendering", () => {
     const html = await res.text();
 
     // Should have filter options
-    expect(html).toMatch(/today/i);
+    expect(html).toMatch(/latest/i);
     expect(html).toMatch(/comment/i);
   });
 
