@@ -92,7 +92,7 @@ describe("SSE Progress Endpoint", () => {
     const text = await res.text();
 
     // Events should be in SSE format: "data: {...}\n\n"
-    const eventLines = text.split("\n").filter((line) => line.startsWith("data:"));
+    const eventLines = text.split("\n").filter((line: string) => line.startsWith("data:"));
     expect(eventLines.length).toBeGreaterThan(0);
 
     // Parse first event to verify JSON structure

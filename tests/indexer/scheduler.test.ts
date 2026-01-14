@@ -158,8 +158,8 @@ describe("BlogIndexer", () => {
     indexer = new BlogIndexer(db, customConfig);
 
     // Can't directly verify config, but should not throw
-    expect(() => indexer.start()).not.toThrow();
-    indexer.stop();
+    expect(() => indexer!.start()).not.toThrow();
+    indexer!.stop();
   });
 
   test("emits events on progress", async () => {

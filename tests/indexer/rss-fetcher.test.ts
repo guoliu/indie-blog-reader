@@ -19,6 +19,13 @@ function loadFixture(name: string): string {
   return readFileSync(join(FIXTURES_DIR, name), "utf-8");
 }
 
+// Helper to get first element (throws if empty for test safety)
+function first<T>(arr: T[]): T {
+  const item = arr[0];
+  if (item === undefined) throw new Error("Expected non-empty array");
+  return item;
+}
+
 describe("RSS Path Discovery", () => {
   test("Hexo blogs should try /atom.xml first", () => {
     const paths = getRssPathsForSsg("hexo");
@@ -74,10 +81,10 @@ describe("RSS Content Parsing", () => {
     const articles = parseRssContent(content);
 
     expect(articles.length).toBe(1);
-    expect(articles[0].title).toBe("Test Article");
-    expect(articles[0].url).toBe("https://example.com/post1");
-    expect(articles[0].description.toLowerCase()).toContain("test article description");
-    expect(articles[0].published_at).toBe("2025-01-13");
+    expect(first(articles).title).toBe("Test Article");
+    expect(first(articles).url).toBe("https://example.com/post1");
+    expect(first(articles).description.toLowerCase()).toContain("test article description");
+    expect(first(articles).published_at).toBe("2025-01-13");
   });
 
   test("parses basic Atom feed", () => {
@@ -85,10 +92,10 @@ describe("RSS Content Parsing", () => {
     const articles = parseRssContent(content);
 
     expect(articles.length).toBe(1);
-    expect(articles[0].title).toBe("Atom Article");
-    expect(articles[0].url).toBe("https://example.com/atom-post");
-    expect(articles[0].description).toContain("Atom article summary");
-    expect(articles[0].published_at).toBe("2025-01-13");
+    expect(first(articles).title).toBe("Atom Article");
+    expect(first(articles).url).toBe("https://example.com/atom-post");
+    expect(first(articles).description).toContain("Atom article summary");
+    expect(first(articles).published_at).toBe("2025-01-13");
   });
 
   test("extracts cover image from media:thumbnail", () => {
@@ -96,7 +103,7 @@ describe("RSS Content Parsing", () => {
     const articles = parseRssContent(content);
 
     expect(articles.length).toBe(1);
-    expect(articles[0].cover_image).toBe("https://example.com/cover.jpg");
+    expect(first(articles).cover_image).toBe("https://example.com/cover.jpg");
   });
 
   test("extracts cover image from enclosure", () => {
@@ -104,7 +111,7 @@ describe("RSS Content Parsing", () => {
     const articles = parseRssContent(content);
 
     expect(articles.length).toBe(1);
-    expect(articles[0].cover_image).toBe("https://example.com/image.png");
+    expect(first(articles).cover_image).toBe("https://example.com/image.png");
   });
 
   test("extracts cover image from content", () => {
@@ -112,7 +119,7 @@ describe("RSS Content Parsing", () => {
     const articles = parseRssContent(content);
 
     expect(articles.length).toBe(1);
-    expect(articles[0].cover_image).toBe("https://example.com/inline-image.jpg");
+    expect(first(articles).cover_image).toBe("https://example.com/inline-image.jpg");
   });
 
   test("handles CDATA content", () => {
@@ -120,8 +127,8 @@ describe("RSS Content Parsing", () => {
     const articles = parseRssContent(content);
 
     expect(articles.length).toBe(1);
-    expect(articles[0].title).toContain("CDATA");
-    expect(articles[0].description).toContain("HTML");
+    expect(first(articles).title).toContain("CDATA");
+    expect(first(articles).description).toContain("HTML");
   });
 
   test("handles missing fields gracefully", () => {
@@ -136,11 +143,11 @@ describe("RSS Content Parsing", () => {
     const articles = parseRssContent(content);
 
     expect(articles.length).toBe(1);
-    expect(articles[0].title).toBe("Only Title");
-    expect(articles[0].url).toBe("");
-    expect(articles[0].description).toBe("");
-    expect(articles[0].cover_image).toBeNull();
-    expect(articles[0].published_at).toBeNull();
+    expect(first(articles).title).toBe("Only Title");
+    expect(first(articles).url).toBe("");
+    expect(first(articles).description).toBe("");
+    expect(first(articles).cover_image).toBeNull();
+    expect(first(articles).published_at).toBeNull();
   });
 
   test("handles multiple items", () => {
@@ -155,9 +162,9 @@ describe("RSS Content Parsing", () => {
     const articles = parseRssContent(content);
 
     expect(articles.length).toBe(3);
-    expect(articles[0].title).toBe("Post 1");
-    expect(articles[1].title).toBe("Post 2");
-    expect(articles[2].title).toBe("Post 3");
+    expect(first(articles).title).toBe("Post 1");
+    expect(articles[1]?.title).toBe("Post 2");
+    expect(articles[2]?.title).toBe("Post 3");
   });
 
   test("handles XML entities in content", () => {
@@ -173,7 +180,7 @@ describe("RSS Content Parsing", () => {
     const articles = parseRssContent(content);
 
     expect(articles.length).toBe(1);
-    expect(articles[0].title).toBe("Post & Title <with> entities");
+    expect(first(articles).title).toBe("Post & Title <with> entities");
   });
 
   test("handles various date formats", () => {
@@ -188,7 +195,7 @@ describe("RSS Content Parsing", () => {
         </channel>
       </rss>`;
     const rssArticles = parseRssContent(rss);
-    expect(rssArticles[0].published_at).toBe("2025-01-15");
+    expect(first(rssArticles).published_at).toBe("2025-01-15");
 
     // ISO 8601 (Atom)
     const atom = `<?xml version="1.0"?>
@@ -200,7 +207,7 @@ describe("RSS Content Parsing", () => {
         </entry>
       </feed>`;
     const atomArticles = parseRssContent(atom);
-    expect(atomArticles[0].published_at).toBe("2025-01-15");
+    expect(first(atomArticles).published_at).toBe("2025-01-15");
   });
 });
 
@@ -284,7 +291,7 @@ describe("Edge Cases", () => {
       </rss>`;
     const articles = parseRssContent(content);
     expect(articles.length).toBe(1);
-    expect(articles[0].published_at).toBeNull();
+    expect(first(articles).published_at).toBeNull();
   });
 
   test("prefers media:thumbnail over enclosure", () => {
@@ -299,7 +306,7 @@ describe("Edge Cases", () => {
         </channel>
       </rss>`;
     const articles = parseRssContent(content);
-    expect(articles[0].cover_image).toBe("https://example.com/thumbnail.jpg");
+    expect(first(articles).cover_image).toBe("https://example.com/thumbnail.jpg");
   });
 
   test("ignores non-image enclosures", () => {
@@ -313,7 +320,7 @@ describe("Edge Cases", () => {
         </channel>
       </rss>`;
     const articles = parseRssContent(content);
-    expect(articles[0].cover_image).toBeNull();
+    expect(first(articles).cover_image).toBeNull();
   });
 
   test("handles Atom with alternate link", () => {
@@ -326,6 +333,6 @@ describe("Edge Cases", () => {
         </entry>
       </feed>`;
     const articles = parseRssContent(content);
-    expect(articles[0].url).toBe("https://example.com/post");
+    expect(first(articles).url).toBe("https://example.com/post");
   });
 });

@@ -61,7 +61,7 @@ describe("/api/events endpoint", () => {
     const res = await appWithoutEmitter.request("/api/events");
     expect(res.status).toBe(503);
 
-    const data = await res.json();
+    const data = (await res.json()) as { error: string };
     expect(data.error).toBe("Event streaming not available");
   });
 
@@ -103,7 +103,7 @@ describe("/api/indexer/status endpoint", () => {
     const res = await app.request("/api/indexer/status");
     expect(res.status).toBe(200);
 
-    const data = await res.json();
+    const data = (await res.json()) as Record<string, unknown>;
     expect(data).toHaveProperty("isRunning");
     expect(data).toHaveProperty("currentBlogId");
     expect(data).toHaveProperty("lastCrawlAt");
@@ -111,7 +111,7 @@ describe("/api/indexer/status endpoint", () => {
 
   test("shows isRunning as false initially", async () => {
     const res = await app.request("/api/indexer/status");
-    const data = await res.json();
+    const data = (await res.json()) as { isRunning: boolean };
 
     // Initially not running
     expect(data.isRunning).toBe(false);

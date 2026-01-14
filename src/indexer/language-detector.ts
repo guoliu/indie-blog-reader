@@ -36,7 +36,11 @@ const KOREAN_RANGES = [
  * Check if a character code is in a range.
  */
 function inRanges(code: number, ranges: number[][]): boolean {
-  return ranges.some(([start, end]) => code >= start && code <= end);
+  return ranges.some((range) => {
+    const start = range[0];
+    const end = range[1];
+    return start !== undefined && end !== undefined && code >= start && code <= end;
+  });
 }
 
 /**
@@ -96,9 +100,11 @@ function calculateDensities(text: string): {
 function extractHtmlLang(html: string): string | null {
   // Match <html lang="..."> or <html xml:lang="...">
   const match = html.match(/<html[^>]*(?:lang|xml:lang)=["']([^"']+)["']/i);
-  if (match?.[1]) {
+  const langCode = match?.[1];
+  if (langCode) {
     // Normalize lang code (e.g., "zh-CN" -> "zh", "en-US" -> "en")
-    return match[1].split("-")[0].toLowerCase();
+    const parts = langCode.split("-");
+    return parts[0]?.toLowerCase() ?? null;
   }
   return null;
 }

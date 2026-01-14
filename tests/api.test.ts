@@ -37,7 +37,7 @@ describe("Articles API", () => {
     // Calculate yesterday in NYC timezone
     const yesterdayDate = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const yesterday = yesterdayDate.toISOString().split("T")[0];
+    const yesterday = yesterdayDate.toISOString().split("T")[0] ?? "";
 
     db.run(
       "INSERT INTO articles (blog_id, url, title, description, cover_image, published_at) VALUES (?, ?, ?, ?, ?, ?)",
