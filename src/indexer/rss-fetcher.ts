@@ -57,6 +57,7 @@ export function parseRssContent(content: string): Article[] {
       url: isAtom ? extractAtomLink(item) : extractTagContent(item, "link") || "",
       description: "",
       cover_image: null,
+      language: null,
       published_at: null,
     };
 
