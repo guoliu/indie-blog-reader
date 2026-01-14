@@ -1,6 +1,28 @@
 import { Database } from "bun:sqlite";
 import { readFileSync, existsSync } from "fs";
 
+/**
+ * Safely add a column to an existing table.
+ * SQLite doesn't support IF NOT EXISTS for ALTER TABLE,
+ * so we catch the "duplicate column" error.
+ */
+function addColumnIfNotExists(
+  db: Database,
+  table: string,
+  column: string,
+  definition: string
+): void {
+  try {
+    db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  } catch (e: unknown) {
+    const error = e as Error;
+    // Ignore "duplicate column name" error - column already exists
+    if (!error.message.includes("duplicate column name")) {
+      throw e;
+    }
+  }
+}
+
 export function createSchema(db: Database): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS blogs (
@@ -108,7 +130,15 @@ export function createSchema(db: Database): void {
     )
   `);
 
-  // Create indexes for common queries
+  // Migrate existing databases: add columns that may be missing from older schemas
+  // (CREATE TABLE IF NOT EXISTS doesn't add new columns to existing tables)
+  addColumnIfNotExists(db, "blogs", "languages", 'TEXT DEFAULT \'["zh"]\'');
+  addColumnIfNotExists(db, "blogs", "error_count", "INTEGER DEFAULT 0");
+  addColumnIfNotExists(db, "blogs", "last_error", "TEXT");
+  addColumnIfNotExists(db, "articles", "language", "TEXT");
+  addColumnIfNotExists(db, "circles", "languages", 'TEXT DEFAULT \'["zh"]\'');
+
+  // Create indexes for common queries (must be after column migration)
   db.run("CREATE INDEX IF NOT EXISTS idx_articles_blog_id ON articles(blog_id)");
   db.run("CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at)");
   db.run("CREATE INDEX IF NOT EXISTS idx_articles_language ON articles(language)");
