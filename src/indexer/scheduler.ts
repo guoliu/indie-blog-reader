@@ -198,16 +198,16 @@ export class BlogIndexer {
     this.stats.lastCrawlAt = new Date().toISOString();
     this.stats.currentBlogUrl = null;
 
+    // Emit progress event (before checking isStopping so tests can verify events)
+    if (this.events.onProgress) {
+      this.events.onProgress(this.getStats());
+    }
+
     // Skip DB updates if we're stopping (DB may be closed)
     if (this.isStopping) return;
 
     // Update crawl state
     this.updateCrawlCursor(blog.id);
-
-    // Emit progress
-    if (this.events.onProgress) {
-      this.events.onProgress(this.getStats());
-    }
   }
 
   /**
