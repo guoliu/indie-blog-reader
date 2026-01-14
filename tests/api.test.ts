@@ -194,40 +194,6 @@ describe("Blogs API", () => {
   });
 });
 
-describe("Refresh API", () => {
-  let app: any;
-
-  beforeAll(async () => {
-    if (existsSync(TEST_DB_PATH)) {
-      unlinkSync(TEST_DB_PATH);
-    }
-
-    const { createSchema } = await import("../src/db");
-    const db = new Database(TEST_DB_PATH);
-    createSchema(db);
-    db.close();
-
-    const { createApp } = await import("../src/app");
-    const result = createApp({ dbPath: TEST_DB_PATH });
-    app = result.app;
-  });
-
-  afterAll(() => {
-    if (existsSync(TEST_DB_PATH)) {
-      unlinkSync(TEST_DB_PATH);
-    }
-  });
-
-  test("POST /api/refresh triggers scraper and returns status", async () => {
-    // Use limit=1 to minimize runtime, and set longer timeout
-    const res = await app.request("/api/refresh?limit=1", {
-      method: "POST",
-    });
-
-    // Accept either success (200) or error (500 if Python not available)
-    expect([200, 500]).toContain(res.status);
-
-    const data = await res.json();
-    expect(data.status).toBeDefined();
-  }, 30000); // 30 second timeout for real scraper call
-});
+// Note: The old Python-based /api/refresh endpoint has been removed.
+// Use /api/batch/start or /api/batch/stream for refreshing blogs.
+// See tests/api-batch.test.ts for batch indexer tests.

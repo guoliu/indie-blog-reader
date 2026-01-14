@@ -280,11 +280,20 @@ describe("Schema Migration (existing database)", () => {
 
 describe("Database Migration", () => {
   let db: Database;
+  const TEST_JSONL_PATH = "data/test-migration.jsonl";
 
-  beforeEach(() => {
+  beforeEach(async () => {
     if (existsSync(TEST_DB_PATH)) {
       unlinkSync(TEST_DB_PATH);
     }
+    // Create test jsonl file
+    const { writeFileSync } = await import("fs");
+    const testData = [
+      JSON.stringify({ url: "https://blog1.example.com", name: "Blog 1", ssg: "hexo" }),
+      JSON.stringify({ url: "https://blog2.example.com", name: "Blog 2", ssg: "hugo", comment_system: { type: "giscus" } }),
+      JSON.stringify({ url: "https://blog3.example.com" }),
+    ].join("\n");
+    writeFileSync(TEST_JSONL_PATH, testData);
   });
 
   afterEach(() => {
@@ -294,22 +303,22 @@ describe("Database Migration", () => {
     if (existsSync(TEST_DB_PATH)) {
       unlinkSync(TEST_DB_PATH);
     }
+    if (existsSync(TEST_JSONL_PATH)) {
+      unlinkSync(TEST_JSONL_PATH);
+    }
   });
 
-  test("migrateFromJsonl imports blogs from blogs.jsonl", async () => {
+  test("migrateFromJsonl imports blogs from jsonl file", async () => {
     const { createSchema, migrateFromJsonl } = await import("../src/db");
     db = new Database(TEST_DB_PATH);
 
     createSchema(db);
 
-    // Use the actual blogs.jsonl file
-    const blogsJsonlPath = "Independent Blog Circles/data/blogs.jsonl";
-    await migrateFromJsonl(db, blogsJsonlPath);
+    await migrateFromJsonl(db, TEST_JSONL_PATH);
 
     const count = db.query("SELECT COUNT(*) as count FROM blogs").get() as { count: number };
 
-    // Should have imported blogs (there are ~17k in the file)
-    expect(count.count).toBeGreaterThan(0);
+    expect(count.count).toBe(3);
   });
 
   test("migrateFromJsonl preserves blog metadata", async () => {
@@ -318,13 +327,25 @@ describe("Database Migration", () => {
 
     createSchema(db);
 
-    const blogsJsonlPath = "Independent Blog Circles/data/blogs.jsonl";
-    await migrateFromJsonl(db, blogsJsonlPath);
+    await migrateFromJsonl(db, TEST_JSONL_PATH);
 
-    // Check a blog has ssg and comment_system populated
-    const blog = db.query("SELECT * FROM blogs WHERE ssg IS NOT NULL AND ssg != 'unknown' LIMIT 1").get() as { ssg: string; comment_system: string } | null;
+    // Check blog 1 has ssg populated
+    const blog1 = db.query("SELECT * FROM blogs WHERE url = ?").get("https://blog1.example.com") as { ssg: string; comment_system: string } | null;
+    expect(blog1).not.toBeNull();
+    expect(blog1!.ssg).toBe("hexo");
 
-    expect(blog).not.toBeNull();
-    expect(blog!.ssg).toBeTruthy();
+    // Check blog 2 has comment_system populated
+    const blog2 = db.query("SELECT * FROM blogs WHERE url = ?").get("https://blog2.example.com") as { ssg: string; comment_system: string } | null;
+    expect(blog2).not.toBeNull();
+    expect(blog2!.comment_system).toBe("giscus");
+  });
+
+  test("migrateFromJsonl throws for non-existent file", async () => {
+    const { createSchema, migrateFromJsonl } = await import("../src/db");
+    db = new Database(TEST_DB_PATH);
+
+    createSchema(db);
+
+    expect(migrateFromJsonl(db, "non-existent.jsonl")).rejects.toThrow("File not found");
   });
 });
