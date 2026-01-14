@@ -49,3 +49,27 @@ jobs:
         run: |
           cd scraper
           python -m pytest test_rss.py -v
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
+      - name: Create data directory
+        run: mkdir -p data
+
+      - name: Run E2E tests
+        run: bunx playwright test
