@@ -67,7 +67,8 @@ describe("Articles API", () => {
 
     // Create app with test database
     const { createApp } = await import("../src/app");
-    app = createApp(TEST_DB_PATH);
+    const result = createApp({ dbPath: TEST_DB_PATH });
+    app = result.app;
   });
 
   afterAll(() => {
@@ -145,7 +146,8 @@ describe("Blogs API", () => {
     ]);
 
     const { createApp } = await import("../src/app");
-    app = createApp(TEST_DB_PATH);
+    const result = createApp({ dbPath: TEST_DB_PATH });
+    app = result.app;
   });
 
   afterAll(() => {
@@ -206,7 +208,8 @@ describe("Refresh API", () => {
     db.close();
 
     const { createApp } = await import("../src/app");
-    app = createApp(TEST_DB_PATH);
+    const result = createApp({ dbPath: TEST_DB_PATH });
+    app = result.app;
   });
 
   afterAll(() => {

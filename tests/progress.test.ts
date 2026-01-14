@@ -25,7 +25,8 @@ describe("SSE Progress Endpoint", () => {
     ]);
 
     const { createApp } = await import("../src/app");
-    app = createApp(TEST_DB_PATH);
+    const result = createApp({ dbPath: TEST_DB_PATH });
+    app = result.app;
   });
 
   afterAll(() => {
@@ -103,7 +104,7 @@ describe("SSE Progress Endpoint", () => {
   }, 60000);
 });
 
-describe("Progress Bar Integration", () => {
+describe("Live Update Integration", () => {
   let app: any;
 
   beforeAll(async () => {
@@ -117,7 +118,8 @@ describe("Progress Bar Integration", () => {
     db.close();
 
     const { createApp } = await import("../src/app");
-    app = createApp(TEST_DB_PATH);
+    const result = createApp({ dbPath: TEST_DB_PATH });
+    app = result.app;
   });
 
   afterAll(() => {
@@ -126,22 +128,22 @@ describe("Progress Bar Integration", () => {
     }
   });
 
-  test("Homepage includes progress bar container", async () => {
+  test("Homepage includes live update indicator", async () => {
     const res = await app.request("/");
     expect(res.status).toBe(200);
 
     const html = await res.text();
-    expect(html).toContain('id="progress-overlay"');
-    expect(html).toContain('id="progress-bar"');
-    expect(html).toContain('id="progress-text"');
+    expect(html).toContain('id="live-indicator"');
+    expect(html).toContain("live-dot");
+    expect(html).toContain("Live");
   });
 
-  test("Homepage includes SSE JavaScript for refresh", async () => {
+  test("Homepage includes SSE JavaScript for live updates", async () => {
     const res = await app.request("/");
     const html = await res.text();
 
     // Should use EventSource for SSE
     expect(html).toContain("EventSource");
-    expect(html).toContain("/api/refresh/stream");
+    expect(html).toContain("/api/events");
   });
 });

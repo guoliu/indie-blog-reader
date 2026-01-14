@@ -7,10 +7,17 @@ interface Article {
   published_at: string;
   blog_name: string;
   blog_url: string;
+  blog_languages?: string;
 }
 
-export function renderHomepage(articles: Article[], activeFilter: string): string {
-  const articleCards = articles.map((article) => `
+export function renderHomepage(
+  articles: Article[],
+  activeFilter: string,
+  activeLang?: string
+): string {
+  const articleCards = articles
+    .map(
+      (article) => `
     <article class="card">
       ${article.cover_image ? `<img src="${escapeHtml(article.cover_image)}" alt="" class="cover" loading="lazy">` : ""}
       <div class="content">
@@ -20,10 +27,21 @@ export function renderHomepage(articles: Article[], activeFilter: string): strin
         <time datetime="${article.published_at}">${formatDate(article.published_at)}</time>
       </div>
     </article>
-  `).join("");
+  `
+    )
+    .join("");
+
+  // Build URLs with current filter and language
+  const buildUrl = (filter: string, lang?: string) => {
+    const params = new URLSearchParams();
+    if (filter !== "today") params.set("filter", filter);
+    if (lang) params.set("lang", lang);
+    const queryString = params.toString();
+    return queryString ? `/?${queryString}` : "/";
+  };
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${activeLang === "zh" ? "zh-CN" : "en"}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -34,24 +52,20 @@ export function renderHomepage(articles: Article[], activeFilter: string): strin
   <header>
     <h1>Indie Blog Reader</h1>
     <nav class="filters">
-      <a href="/?filter=today" class="${activeFilter === "today" ? "active" : ""}">New Today</a>
-      <a href="/?filter=comments" class="${activeFilter === "comments" ? "active" : ""}">New Comments</a>
+      <a href="${buildUrl("today", activeLang)}" class="${activeFilter === "today" ? "active" : ""}">New Today</a>
+      <a href="${buildUrl("comments", activeLang)}" class="${activeFilter === "comments" ? "active" : ""}">New Comments</a>
     </nav>
-    <div class="actions">
-      <form action="/api/refresh" method="POST" class="refresh-form">
-        <button type="submit" class="refresh-btn">Refresh</button>
-      </form>
-    </div>
+    <nav class="language-switcher">
+      <a href="${buildUrl(activeFilter)}" class="${!activeLang ? "active" : ""}">All</a>
+      <a href="${buildUrl(activeFilter, "zh")}" class="${activeLang === "zh" ? "active" : ""}">中文</a>
+      <a href="${buildUrl(activeFilter, "en")}" class="${activeLang === "en" ? "active" : ""}">English</a>
+    </nav>
   </header>
 
-  <!-- Progress overlay -->
-  <div id="progress-overlay" class="progress-overlay hidden">
-    <div class="progress-container">
-      <div id="progress-bar" class="progress-bar">
-        <div class="progress-fill" style="width: 0%"></div>
-      </div>
-      <p id="progress-text" class="progress-text">Refreshing...</p>
-    </div>
+  <!-- Live update indicator -->
+  <div id="live-indicator" class="live-indicator">
+    <span class="live-dot"></span>
+    <span class="live-text">Live</span>
   </div>
 
   <main>
@@ -70,57 +84,96 @@ export function renderHomepage(articles: Article[], activeFilter: string): strin
   </aside>
 
   <script>
-    // Handle refresh form with SSE streaming
-    document.querySelector('.refresh-form')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const btn = e.target.querySelector('button');
-      btn.disabled = true;
-      btn.textContent = 'Refreshing...';
+    // Connect to SSE for live updates
+    const currentLang = ${activeLang ? `'${activeLang}'` : "null"};
+    const sseUrl = currentLang ? '/api/events?lang=' + currentLang : '/api/events';
 
-      const overlay = document.getElementById('progress-overlay');
-      const progressBar = document.querySelector('.progress-fill');
-      const progressText = document.getElementById('progress-text');
+    let eventSource = null;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
+    const reconnectDelay = 3000;
 
-      overlay.classList.remove('hidden');
+    function connectSSE() {
+      eventSource = new EventSource(sseUrl);
 
-      const eventSource = new EventSource('/api/refresh/stream?limit=100');
+      eventSource.onopen = () => {
+        console.log('SSE connected');
+        reconnectAttempts = 0;
+        document.getElementById('live-indicator').classList.add('connected');
+      };
 
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
-        if (data.type === 'start') {
-          progressText.textContent = 'Starting refresh...';
-          progressBar.style.width = '0%';
-        } else if (data.type === 'progress') {
-          const percent = Math.round((data.current / data.total) * 100);
-          progressBar.style.width = percent + '%';
-          progressText.textContent = 'Refreshing... ' + data.current + '/' + data.total + ' blogs (' + data.newArticles + ' new articles)';
-        } else if (data.type === 'complete') {
-          progressBar.style.width = '100%';
-          progressText.textContent = 'Done! ' + data.newArticles + ' new articles found.';
-          eventSource.close();
-          setTimeout(() => location.reload(), 1000);
-        } else if (data.type === 'error') {
-          progressText.textContent = 'Error: ' + data.message;
-          eventSource.close();
-          setTimeout(() => {
-            overlay.classList.add('hidden');
-            btn.disabled = false;
-            btn.textContent = 'Refresh';
-          }, 3000);
+        if (data.type === 'new_article') {
+          // Prepend new article card to the feed
+          prependArticle(data.data.article, data.data.blog);
+        } else if (data.type === 'indexer_progress') {
+          // Could show indexing progress in status bar
+          console.log('Indexer progress:', data.data);
         }
       };
 
       eventSource.onerror = () => {
-        progressText.textContent = 'Connection lost. Retrying...';
+        console.log('SSE disconnected');
+        document.getElementById('live-indicator').classList.remove('connected');
         eventSource.close();
-        setTimeout(() => {
-          overlay.classList.add('hidden');
-          btn.disabled = false;
-          btn.textContent = 'Refresh';
-        }, 2000);
+
+        if (reconnectAttempts < maxReconnectAttempts) {
+          reconnectAttempts++;
+          setTimeout(connectSSE, reconnectDelay * reconnectAttempts);
+        }
       };
-    });
+    }
+
+    function prependArticle(article, blog) {
+      const articlesSection = document.querySelector('.articles');
+      const emptyMessage = articlesSection.querySelector('.empty');
+      if (emptyMessage) {
+        emptyMessage.remove();
+      }
+
+      const card = document.createElement('article');
+      card.className = 'card new-article';
+      card.innerHTML = \`
+        \${article.cover_image ? '<img src="' + escapeHtml(article.cover_image) + '" alt="" class="cover" loading="lazy">' : ''}
+        <div class="content">
+          <span class="blog-name">\${escapeHtml(blog.name || 'Unknown')}</span>
+          <h2><a href="\${escapeHtml(article.url)}" target="_blank" rel="noopener">\${escapeHtml(article.title)}</a></h2>
+          \${article.description ? '<p class="description">' + escapeHtml(truncate(article.description, 150)) + '</p>' : ''}
+          <time datetime="\${article.published_at}">\${formatDate(article.published_at)}</time>
+        </div>
+      \`;
+
+      articlesSection.insertBefore(card, articlesSection.firstChild);
+
+      // Animate the new card
+      setTimeout(() => card.classList.remove('new-article'), 500);
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function truncate(text, maxLength) {
+      if (!text || text.length <= maxLength) return text || '';
+      return text.slice(0, maxLength).trim() + '...';
+    }
+
+    function formatDate(dateStr) {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('${activeLang === "zh" ? "zh-CN" : "en-US"}', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    }
+
+    // Start SSE connection
+    connectSSE();
 
     // Handle add blog form
     document.querySelector('.add-form')?.addEventListener('submit', async (e) => {
@@ -138,7 +191,7 @@ export function renderHomepage(articles: Article[], activeFilter: string): strin
 
         if (res.ok) {
           form.reset();
-          alert('Blog added successfully');
+          alert('Blog added successfully! It will be indexed automatically.');
         } else {
           const data = await res.json();
           alert(data.error || 'Failed to add blog');
