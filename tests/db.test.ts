@@ -169,6 +169,115 @@ describe("Database Schema", () => {
   });
 });
 
+describe("Schema Migration (existing database)", () => {
+  let db: Database;
+
+  beforeEach(() => {
+    if (existsSync(TEST_DB_PATH)) {
+      unlinkSync(TEST_DB_PATH);
+    }
+  });
+
+  afterEach(() => {
+    if (db) {
+      db.close();
+    }
+    if (existsSync(TEST_DB_PATH)) {
+      unlinkSync(TEST_DB_PATH);
+    }
+  });
+
+  test("createSchema handles existing database without language column", async () => {
+    // Simulate an OLD database schema (before language column was added)
+    db = new Database(TEST_DB_PATH);
+
+    // Create old articles table WITHOUT language column
+    db.run(`
+      CREATE TABLE articles (
+        id INTEGER PRIMARY KEY,
+        blog_id INTEGER,
+        url TEXT UNIQUE NOT NULL,
+        title TEXT,
+        description TEXT,
+        cover_image TEXT,
+        published_at TEXT,
+        discovered_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create other required tables in old format
+    db.run(`
+      CREATE TABLE blogs (
+        id INTEGER PRIMARY KEY,
+        url TEXT UNIQUE NOT NULL,
+        name TEXT,
+        ssg TEXT,
+        comment_system TEXT,
+        rss_url TEXT,
+        last_scraped_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Now run createSchema against this existing database
+    // This should NOT fail, even though articles table exists without language column
+    const { createSchema } = await import("../src/db");
+
+    expect(() => createSchema(db)).not.toThrow();
+
+    // Verify articles table now has language column
+    const columns = db.query("PRAGMA table_info(articles)").all() as { name: string }[];
+    const columnNames = columns.map(c => c.name);
+    expect(columnNames).toContain("language");
+  });
+
+  test("createSchema handles existing database without blogs.languages column", async () => {
+    // Simulate an OLD database schema (before languages column was added to blogs)
+    db = new Database(TEST_DB_PATH);
+
+    // Create old blogs table WITHOUT languages, error_count, last_error columns
+    db.run(`
+      CREATE TABLE blogs (
+        id INTEGER PRIMARY KEY,
+        url TEXT UNIQUE NOT NULL,
+        name TEXT,
+        ssg TEXT,
+        comment_system TEXT,
+        rss_url TEXT,
+        last_scraped_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create articles table with language (current version)
+    db.run(`
+      CREATE TABLE articles (
+        id INTEGER PRIMARY KEY,
+        blog_id INTEGER,
+        url TEXT UNIQUE NOT NULL,
+        title TEXT,
+        description TEXT,
+        cover_image TEXT,
+        language TEXT,
+        published_at TEXT,
+        discovered_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Now run createSchema against this existing database
+    const { createSchema } = await import("../src/db");
+
+    expect(() => createSchema(db)).not.toThrow();
+
+    // Verify blogs table now has languages column
+    const columns = db.query("PRAGMA table_info(blogs)").all() as { name: string }[];
+    const columnNames = columns.map(c => c.name);
+    expect(columnNames).toContain("languages");
+    expect(columnNames).toContain("error_count");
+    expect(columnNames).toContain("last_error");
+  });
+});
+
 describe("Database Migration", () => {
   let db: Database;
 
