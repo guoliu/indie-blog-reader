@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+    <channel>
+        <title>Test Blog</title>
+        <item>
+            <title>Post with Content Image</title>
+            <link>https://example.com/post</link>
+            <description>No image in description</description>
+            <content:encoded><![CDATA[<p>Some text</p><img src="https://example.com/inline-image.jpg" alt="test"/><p>More text</p>]]></content:encoded>
+        </item>
+    </channel>
+</rss>

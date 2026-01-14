@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+    <channel>
+        <title>Test Blog</title>
+        <item>
+            <title><![CDATA[Post with <special> CDATA]]></title>
+            <link>https://example.com/cdata-post</link>
+            <description><![CDATA[<p>This has <strong>HTML</strong> content.</p>]]></description>
+            <pubDate>Wed, 15 Jan 2025 12:00:00 +0000</pubDate>
+        </item>
+    </channel>
+</rss>
