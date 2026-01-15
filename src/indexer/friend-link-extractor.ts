@@ -175,7 +175,7 @@ export function extractFromXFN(html: string): FriendLink[] {
           url,
           name: name.trim() || undefined,
           discoveryMethod: "xfn",
-          confidence: XFN_CONFIDENCE[rel],
+          confidence: XFN_CONFIDENCE[rel] ?? 0.5,
         });
         return; // Only add once per URL
       }
@@ -186,18 +186,22 @@ export function extractFromXFN(html: string): FriendLink[] {
   const seenUrls = new Set<string>();
 
   while ((match = anchorPattern.exec(html)) !== null) {
-    const url = match[1];
-    if (!seenUrls.has(url)) {
+    const url = match[1] ?? "";
+    const relValue = match[2] ?? "";
+    const name = match[3] ?? "";
+    if (url && !seenUrls.has(url)) {
       seenUrls.add(url);
-      processMatch(url, match[2], match[3]);
+      processMatch(url, relValue, name);
     }
   }
 
   while ((match = anchorPattern2.exec(html)) !== null) {
-    const url = match[2];
-    if (!seenUrls.has(url)) {
+    const url = match[2] ?? "";
+    const relValue = match[1] ?? "";
+    const name = match[3] ?? "";
+    if (url && !seenUrls.has(url)) {
       seenUrls.add(url);
-      processMatch(url, match[1], match[3]);
+      processMatch(url, relValue, name);
     }
   }
 
@@ -224,12 +228,13 @@ export function extractFromMicroformats(html: string): FriendLink[] {
 
   let match;
   while ((match = followingPattern.exec(html)) !== null) {
-    const url = match[1];
-    if (!seenUrls.has(url)) {
+    const url = match[1] ?? "";
+    const name = match[2] ?? "";
+    if (url && !seenUrls.has(url)) {
       seenUrls.add(url);
       links.push({
         url,
-        name: match[2].trim() || undefined,
+        name: name.trim() || undefined,
         discoveryMethod: "microformat",
         confidence: 0.85,
       });
@@ -237,12 +242,13 @@ export function extractFromMicroformats(html: string): FriendLink[] {
   }
 
   while ((match = followingPattern2.exec(html)) !== null) {
-    const url = match[1];
-    if (!seenUrls.has(url)) {
+    const url = match[1] ?? "";
+    const name = match[2] ?? "";
+    if (url && !seenUrls.has(url)) {
       seenUrls.add(url);
       links.push({
         url,
-        name: match[2].trim() || undefined,
+        name: name.trim() || undefined,
         discoveryMethod: "microformat",
         confidence: 0.85,
       });
@@ -282,7 +288,10 @@ export function extractFromHeuristics(html: string): FriendLink[] {
 
     let match;
     while ((match = containerRegex.exec(html)) !== null) {
-      extractLinksFromContent(match[2], links, seenUrls);
+      const content = match[2] ?? "";
+      if (content) {
+        extractLinksFromContent(content, links, seenUrls);
+      }
     }
   }
 
@@ -300,7 +309,10 @@ export function extractFromHeuristics(html: string): FriendLink[] {
 
     const headingMatch = html.match(headingRegex);
     if (headingMatch) {
-      extractLinksFromContent(headingMatch[1], links, seenUrls);
+      const content = headingMatch[1] ?? "";
+      if (content) {
+        extractLinksFromContent(content, links, seenUrls);
+      }
     }
   }
 
@@ -319,10 +331,10 @@ function extractLinksFromContent(
 
   let match;
   while ((match = linkPattern.exec(content)) !== null) {
-    const url = match[1];
-    const name = match[2].trim();
+    const url = match[1] ?? "";
+    const name = (match[2] ?? "").trim();
 
-    if (!seenUrls.has(url) && isValidBlogUrl(url)) {
+    if (url && !seenUrls.has(url) && isValidBlogUrl(url)) {
       seenUrls.add(url);
       links.push({
         url,

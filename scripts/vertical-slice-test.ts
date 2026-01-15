@@ -41,17 +41,19 @@ function parseArgs(): Config {
   };
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--limit" && args[i + 1]) {
-      config.limit = parseInt(args[i + 1], 10);
+    const arg = args[i];
+    const nextArg = args[i + 1];
+    if (arg === "--limit" && nextArg) {
+      config.limit = parseInt(nextArg, 10);
       i++;
-    } else if (args[i] === "--concurrency" && args[i + 1]) {
-      config.concurrency = parseInt(args[i + 1], 10);
+    } else if (arg === "--concurrency" && nextArg) {
+      config.concurrency = parseInt(nextArg, 10);
       i++;
-    } else if (args[i] === "--timeout" && args[i + 1]) {
-      config.timeout = parseInt(args[i + 1], 10);
+    } else if (arg === "--timeout" && nextArg) {
+      config.timeout = parseInt(nextArg, 10);
       i++;
-    } else if (args[i] === "--source" && args[i + 1]) {
-      config.source = args[i + 1];
+    } else if (arg === "--source" && nextArg) {
+      config.source = nextArg;
       i++;
     }
   }
@@ -152,7 +154,7 @@ async function processSite(
     // Fetch the page
     const result = await httpClient.fetch(url, { timeout });
 
-    if (result.status === "error") {
+    if (!result.ok) {
       return {
         url,
         success: false,
@@ -161,7 +163,7 @@ async function processSite(
       };
     }
 
-    if (result.status === "not_modified" || !result.body) {
+    if (result.unchanged || !result.body) {
       return {
         url,
         success: true,

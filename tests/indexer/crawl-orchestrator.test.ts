@@ -465,7 +465,7 @@ describe("CrawlOrchestrator", () => {
       const candidates = await orchestrator.findDerivedSeedCandidates();
 
       expect(candidates.length).toBe(1);
-      expect(candidates[0].url).toBe("https://highquality.com");
+      expect(candidates[0]?.url).toBe("https://highquality.com");
     });
   });
 

@@ -31,6 +31,9 @@ export interface FingerprintResult {
   signals: string[];
 }
 
+/** Alias for backwards compatibility */
+export type SiteFingerprint = FingerprintResult;
+
 // ============================================================================
 // SSG Detection
 // ============================================================================

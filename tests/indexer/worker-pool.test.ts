@@ -110,16 +110,16 @@ describe("WorkerPool", () => {
 
       expect(results).toHaveLength(5);
       expect(results[0]).toEqual({ id: 1, success: true });
-      expect(results[1].error).toContain("Job 2 failed");
+      expect(results[1]?.error).toContain("Job 2 failed");
       expect(results[2]).toEqual({ id: 3, success: true });
-      expect(results[3].error).toContain("Job 4 failed");
+      expect(results[3]?.error).toContain("Job 4 failed");
       expect(results[4]).toEqual({ id: 5, success: true });
     });
 
     test("includes job in error result", async () => {
       const { WorkerPool } = await import("../../src/indexer/worker-pool");
 
-      const pool = new WorkerPool({
+      const pool = new WorkerPool<{ url: string }, { url: string }>({
         concurrency: 1,
         worker: async (job: { url: string }) => {
           throw new Error("Network error");
@@ -129,8 +129,8 @@ describe("WorkerPool", () => {
       const jobs = [{ url: "https://example.com" }];
       const results = await pool.run(jobs);
 
-      expect(results[0].error).toBe("Network error");
-      expect(results[0].job).toEqual({ url: "https://example.com" });
+      expect(results[0]?.error).toBe("Network error");
+      expect(results[0]?.job).toEqual({ url: "https://example.com" });
     });
   });
 
@@ -186,7 +186,9 @@ describe("WorkerPool", () => {
 
       await pool.run([{ id: 1 }, { id: 2 }, { id: 3 }]);
 
-      expect(finalProgress).toEqual({ succeeded: 2, failed: 1 });
+      expect(finalProgress).not.toBeNull();
+      expect(finalProgress!.succeeded).toBe(2);
+      expect(finalProgress!.failed).toBe(1);
     });
   });
 

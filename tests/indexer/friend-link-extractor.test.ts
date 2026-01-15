@@ -43,7 +43,7 @@ describe("FriendLinkExtractor", () => {
       const links = extractFromXFN(html);
 
       expect(links).toHaveLength(1);
-      expect(links[0].confidence).toBe(0.7); // Lower confidence for acquaintance
+      expect(links[0]?.confidence).toBe(0.7); // Lower confidence for acquaintance
     });
 
     test("returns empty array when no XFN links", async () => {
@@ -145,8 +145,8 @@ describe("FriendLinkExtractor", () => {
       const links = extractFromHeuristics(html);
 
       expect(links).toHaveLength(2);
-      expect(links[0].url).toBe("https://friend1.com");
-      expect(links[0].discoveryMethod).toBe("heuristic");
+      expect(links[0]?.url).toBe("https://friend1.com");
+      expect(links[0]?.discoveryMethod).toBe("heuristic");
     });
 
     test("extracts links from blogroll container", async () => {
@@ -239,7 +239,7 @@ describe("FriendLinkExtractor", () => {
 
       const links = extractFromHeuristics(html);
 
-      expect(links[0].confidence).toBeLessThan(0.8);
+      expect(links[0]?.confidence).toBeLessThan(0.8);
     });
   });
 
@@ -278,7 +278,7 @@ describe("FriendLinkExtractor", () => {
       const links = await extractFriendLinks({ html, url: "https://example.com" });
 
       expect(links).toHaveLength(1);
-      expect(links[0].discoveryMethod).toBe("heuristic");
+      expect(links[0]?.discoveryMethod).toBe("heuristic");
     });
 
     test("deduplicates links from multiple sources", async () => {
@@ -298,7 +298,7 @@ describe("FriendLinkExtractor", () => {
       // Should have one link, preferring the XFN version
       const friendLinks = links.filter((l) => l.url === "https://friend.com");
       expect(friendLinks).toHaveLength(1);
-      expect(friendLinks[0].discoveryMethod).toBe("xfn");
+      expect(friendLinks[0]?.discoveryMethod).toBe("xfn");
     });
 
     test("resolves relative URLs", async () => {

@@ -76,6 +76,9 @@ export class WorkerPool<TJob, TResult> {
         const index = nextIndex++;
         const job = jobs[index];
 
+        // Skip undefined jobs (shouldn't happen but satisfies TypeScript)
+        if (job === undefined) continue;
+
         try {
           const result = await this.worker(job);
           results[index] = result as TResult & { error?: string; job?: TJob };

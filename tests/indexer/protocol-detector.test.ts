@@ -299,7 +299,7 @@ describe("ProtocolDetector", () => {
       const result = detectXFN(html);
 
       expect(result.links).toHaveLength(1);
-      expect(result.links[0].url).toBe("https://friend.com");
+      expect(result.links[0]?.url).toBe("https://friend.com");
     });
 
     test("handles mixed XFN and other rel values", async () => {
@@ -312,7 +312,7 @@ describe("ProtocolDetector", () => {
       const result = detectXFN(html);
 
       expect(result.links).toHaveLength(1);
-      expect(result.links[0].rel).toEqual(["friend"]);
+      expect(result.links[0]?.rel).toEqual(["friend"]);
     });
 
     test("returns empty array when no XFN links found", async () => {

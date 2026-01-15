@@ -252,14 +252,22 @@ export function detectXFN(html: string): XFNResult {
 
   let match;
   while ((match = anchorPattern.exec(html)) !== null) {
-    processMatch(match[1], match[2]);
+    const url = match[1] ?? "";
+    const relValue = match[2] ?? "";
+    if (url && relValue) {
+      processMatch(url, relValue);
+    }
   }
 
   while ((match = anchorPattern2.exec(html)) !== null) {
     // For this pattern, rel is first, href is second
-    const existingUrls = links.map((l) => l.url);
-    if (!existingUrls.includes(match[2])) {
-      processMatch(match[2], match[1]);
+    const relValue = match[1] ?? "";
+    const url = match[2] ?? "";
+    if (url && relValue) {
+      const existingUrls = links.map((l) => l.url);
+      if (!existingUrls.includes(url)) {
+        processMatch(url, relValue);
+      }
     }
   }
 
@@ -287,15 +295,15 @@ export function detectRSS(html: string, baseUrl: string): RSSResult {
   let match;
 
   // Try all patterns
-  if ((match = rssPattern.exec(html)) !== null) {
+  if ((match = rssPattern.exec(html)) !== null && match[2]) {
     return { supported: true, url: resolveUrl(match[2], baseUrl) };
   }
 
-  if ((match = rssPattern2.exec(html)) !== null) {
+  if ((match = rssPattern2.exec(html)) !== null && match[2]) {
     return { supported: true, url: resolveUrl(match[2], baseUrl) };
   }
 
-  if ((match = rssPattern3.exec(html)) !== null) {
+  if ((match = rssPattern3.exec(html)) !== null && match[1]) {
     return { supported: true, url: resolveUrl(match[1], baseUrl) };
   }
 
