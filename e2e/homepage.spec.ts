@@ -6,8 +6,8 @@ test.describe("Homepage", () => {
 
     await expect(page.locator("h1")).toHaveText("Indie Blog Reader");
     await expect(page.locator("nav.filters")).toBeVisible();
-    // "today" filter uses "/" as href (default), "comments" uses "/?filter=comments"
-    await expect(page.locator("nav.filters a").first()).toHaveText("New Today");
+    // "latest" filter uses "/" as href (default), "comments" uses "/?filter=comments"
+    await expect(page.locator("nav.filters a").first()).toHaveText("Latest");
     await expect(page.locator('a[href="/?filter=comments"]')).toHaveText("New Comments");
   });
 
@@ -43,7 +43,7 @@ test.describe("Homepage", () => {
     await page.click('a[href="/?filter=comments"]');
     await expect(page).toHaveURL("/?filter=comments");
 
-    // Click New Today filter (first link in nav.filters)
+    // Click Latest filter (first link in nav.filters)
     await page.click("nav.filters a:first-child");
     await expect(page).toHaveURL("/");
   });

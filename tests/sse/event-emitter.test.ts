@@ -111,6 +111,7 @@ describe("ArticleEventEmitter", () => {
       totalBlogsIndexed: 100,
       newArticlesFound: 50,
       errorsEncountered: 5,
+      lastCrawlAt: null,
       currentBlogUrl: "https://example.com",
     });
 
@@ -226,6 +227,7 @@ describe("ArticleEventEmitter", () => {
         totalBlogsIndexed: 0,
         newArticlesFound: 0,
         errorsEncountered: 0,
+        lastCrawlAt: null,
         currentBlogUrl: null,
       });
     }).not.toThrow();
@@ -261,6 +263,7 @@ describe("ArticleEventEmitter", () => {
       totalBlogsIndexed: 10,
       newArticlesFound: 5,
       errorsEncountered: 0,
+      lastCrawlAt: null,
       currentBlogUrl: null,
     });
 

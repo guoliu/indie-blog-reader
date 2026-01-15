@@ -9,11 +9,11 @@ export interface IndexerProgressEvent {
   type: "indexer_progress";
   data: {
     isRunning: boolean;
-    total: number;
-    processed: number;
+    totalBlogsIndexed: number;
     newArticlesFound: number;
     errorsEncountered: number;
-    currentBlog: string | null;
+    lastCrawlAt: string | null;
+    currentBlogUrl: string | null;
   };
 }
 
@@ -104,11 +104,11 @@ export class ArticleEventEmitter {
    */
   emitProgress(stats: {
     isRunning: boolean;
-    total: number;
-    processed: number;
+    totalBlogsIndexed: number;
     newArticlesFound: number;
     errorsEncountered: number;
-    currentBlog: string | null;
+    lastCrawlAt: string | null;
+    currentBlogUrl: string | null;
   }): void {
     const event: IndexerProgressEvent = {
       type: "indexer_progress",

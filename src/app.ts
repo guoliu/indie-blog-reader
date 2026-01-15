@@ -250,11 +250,11 @@ export function createApp(options: AppOptions = {}) {
         if (eventEmitter) {
           eventEmitter.emitProgress({
             isRunning: stats.processed < stats.total && !stats.cancelled,
-            total: stats.total,
-            processed: stats.processed,
+            totalBlogsIndexed: stats.processed,
             newArticlesFound: stats.newArticlesFound,
             errorsEncountered: stats.failed,
-            currentBlog,
+            lastCrawlAt: null,
+            currentBlogUrl: currentBlog,
           });
         }
       },
