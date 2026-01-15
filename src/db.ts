@@ -36,7 +36,24 @@ export function createSchema(db: Database): void {
       last_scraped_at TEXT,
       error_count INTEGER DEFAULT 0,
       last_error TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      -- V2: Conditional HTTP support
+      etag TEXT,
+      last_modified TEXT,
+      -- V2: Tiered polling
+      crawl_tier TEXT DEFAULT 'normal',
+      next_crawl_at INTEGER,
+      -- V2: Fingerprinting
+      theme TEXT,
+      -- V2: Trust & graph
+      trust_score REAL DEFAULT 0.5,
+      hop_count INTEGER,
+      -- V2: Protocol detection
+      has_opml INTEGER DEFAULT 0,
+      opml_url TEXT,
+      has_webmention INTEGER DEFAULT 0,
+      webmention_endpoint TEXT,
+      has_microformats INTEGER DEFAULT 0
     )
   `);
 
@@ -130,6 +147,22 @@ export function createSchema(db: Database): void {
     )
   `);
 
+  // V2: Site relationships for graph data
+  db.run(`
+    CREATE TABLE IF NOT EXISTS site_relationships (
+      id INTEGER PRIMARY KEY,
+      source_site_id INTEGER NOT NULL REFERENCES blogs(id),
+      target_site_id INTEGER REFERENCES blogs(id),
+      target_url TEXT NOT NULL,
+      relationship_type TEXT NOT NULL,
+      discovery_method TEXT,
+      confidence REAL DEFAULT 0.5,
+      discovered_at INTEGER DEFAULT (unixepoch()),
+      last_seen_at INTEGER DEFAULT (unixepoch()),
+      UNIQUE(source_site_id, target_url, relationship_type)
+    )
+  `);
+
   // Migrate existing databases: add columns that may be missing from older schemas
   // (CREATE TABLE IF NOT EXISTS doesn't add new columns to existing tables)
   addColumnIfNotExists(db, "blogs", "languages", 'TEXT DEFAULT \'["zh"]\'');
@@ -138,6 +171,20 @@ export function createSchema(db: Database): void {
   addColumnIfNotExists(db, "articles", "language", "TEXT");
   addColumnIfNotExists(db, "circles", "languages", 'TEXT DEFAULT \'["zh"]\'');
 
+  // V2 migrations for existing databases
+  addColumnIfNotExists(db, "blogs", "etag", "TEXT");
+  addColumnIfNotExists(db, "blogs", "last_modified", "TEXT");
+  addColumnIfNotExists(db, "blogs", "crawl_tier", "TEXT DEFAULT 'normal'");
+  addColumnIfNotExists(db, "blogs", "next_crawl_at", "INTEGER");
+  addColumnIfNotExists(db, "blogs", "theme", "TEXT");
+  addColumnIfNotExists(db, "blogs", "trust_score", "REAL DEFAULT 0.5");
+  addColumnIfNotExists(db, "blogs", "hop_count", "INTEGER");
+  addColumnIfNotExists(db, "blogs", "has_opml", "INTEGER DEFAULT 0");
+  addColumnIfNotExists(db, "blogs", "opml_url", "TEXT");
+  addColumnIfNotExists(db, "blogs", "has_webmention", "INTEGER DEFAULT 0");
+  addColumnIfNotExists(db, "blogs", "webmention_endpoint", "TEXT");
+  addColumnIfNotExists(db, "blogs", "has_microformats", "INTEGER DEFAULT 0");
+
   // Create indexes for common queries (must be after column migration)
   db.run("CREATE INDEX IF NOT EXISTS idx_articles_blog_id ON articles(blog_id)");
   db.run("CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at)");
@@ -145,6 +192,11 @@ export function createSchema(db: Database): void {
   db.run("CREATE INDEX IF NOT EXISTS idx_comment_snapshots_article_id ON comment_snapshots(article_id)");
   db.run("CREATE INDEX IF NOT EXISTS idx_blogs_last_scraped_at ON blogs(last_scraped_at)");
   db.run("CREATE INDEX IF NOT EXISTS idx_discovery_queue_priority ON discovery_queue(priority DESC)");
+
+  // V2 indexes
+  db.run("CREATE INDEX IF NOT EXISTS idx_blogs_next_crawl_at ON blogs(next_crawl_at)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_blogs_crawl_tier ON blogs(crawl_tier)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_relationships_source ON site_relationships(source_site_id)");
 }
 
 interface BlogJsonl {
