@@ -38,11 +38,17 @@ export interface XFNResult {
   links: XFNLink[];
 }
 
+export interface RSSResult {
+  supported: boolean;
+  url?: string;
+}
+
 export interface AllProtocolsResult {
   opml: OPMLResult;
   webmention: WebMentionResult;
   microformats: MicroformatsResult;
   xfn: XFNResult;
+  rss: RSSResult;
 }
 
 // ============================================================================
@@ -83,13 +89,30 @@ export function detectOPML(html: string, baseUrl: string): OPMLResult {
   const linkPattern =
     /<link[^>]+(?:rel=["'](?:blogroll|alternate)["'][^>]*type=["']text\/x-opml["']|type=["']text\/x-opml["'][^>]*rel=["'](?:blogroll|alternate)["'])[^>]*href=["']([^"']+)["']/i;
 
-  // Also try just type="text/x-opml"
+  // Also try just type="text/x-opml" for link tags
   const typeOnlyPattern =
     /<link[^>]+type=["']text\/x-opml["'][^>]*href=["']([^"']+)["']/i;
+
+  // Also check anchor tags with type="text/x-opml"
+  const anchorPattern =
+    /<a[^>]+href=["']([^"']+\.opml)["'][^>]*type=["']text\/x-opml["'][^>]*>/i;
+  const anchorPattern2 =
+    /<a[^>]+type=["']text\/x-opml["'][^>]*href=["']([^"']+)["'][^>]*>/i;
+  const anchorPattern3 =
+    /<a[^>]+href=["']([^"']+\.opml)["'][^>]*>/i; // Any link to .opml file
 
   let match = html.match(linkPattern);
   if (!match) {
     match = html.match(typeOnlyPattern);
+  }
+  if (!match) {
+    match = html.match(anchorPattern);
+  }
+  if (!match) {
+    match = html.match(anchorPattern2);
+  }
+  if (!match) {
+    match = html.match(anchorPattern3);
   }
 
   if (match && match[1]) {
@@ -244,6 +267,42 @@ export function detectXFN(html: string): XFNResult {
 }
 
 // ============================================================================
+// RSS Detection
+// ============================================================================
+
+/**
+ * Detect RSS/Atom feed links in HTML
+ */
+export function detectRSS(html: string, baseUrl: string): RSSResult {
+  // Look for RSS/Atom link elements
+  // <link rel="alternate" type="application/rss+xml" href="...">
+  // <link rel="alternate" type="application/atom+xml" href="...">
+  const rssPattern =
+    /<link[^>]+rel=["']alternate["'][^>]+type=["']application\/(rss|atom)\+xml["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
+  const rssPattern2 =
+    /<link[^>]+type=["']application\/(rss|atom)\+xml["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
+  const rssPattern3 =
+    /<link[^>]+href=["']([^"']+)["'][^>]*type=["']application\/(rss|atom)\+xml["'][^>]*>/gi;
+
+  let match;
+
+  // Try all patterns
+  if ((match = rssPattern.exec(html)) !== null) {
+    return { supported: true, url: resolveUrl(match[2], baseUrl) };
+  }
+
+  if ((match = rssPattern2.exec(html)) !== null) {
+    return { supported: true, url: resolveUrl(match[2], baseUrl) };
+  }
+
+  if ((match = rssPattern3.exec(html)) !== null) {
+    return { supported: true, url: resolveUrl(match[1], baseUrl) };
+  }
+
+  return { supported: false };
+}
+
+// ============================================================================
 // Combined Detection
 // ============================================================================
 
@@ -259,6 +318,7 @@ export function detectAllProtocols(
     webmention: detectWebMention(html, baseUrl),
     microformats: detectMicroformats(html),
     xfn: detectXFN(html),
+    rss: detectRSS(html, baseUrl),
   };
 }
 
