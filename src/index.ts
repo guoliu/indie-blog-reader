@@ -23,7 +23,15 @@ const indexer = new BlogIndexer(
       eventEmitter.emitNewArticle(article, blog);
     },
     onProgress: (stats) => {
-      eventEmitter.emitProgress(stats);
+      // Transform IndexerStats to IndexerProgressData
+      eventEmitter.emitProgress({
+        isRunning: stats.isRunning,
+        total: stats.totalBlogsIndexed,
+        processed: stats.totalBlogsIndexed,
+        newArticlesFound: stats.newArticlesFound,
+        errorsEncountered: stats.errorsEncountered,
+        currentBlog: stats.currentBlogUrl,
+      });
     },
     onError: (error, blog) => {
       eventEmitter.emitError(error.message, blog.url);

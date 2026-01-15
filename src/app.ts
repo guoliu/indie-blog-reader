@@ -8,6 +8,8 @@ import {
   createSSEStream,
 } from "./sse/event-emitter";
 import { BatchIndexer, type BatchStats } from "./indexer/batch-indexer";
+import { SeedDiscovery } from "./indexer/seed-discovery";
+import { detectLanguages } from "./indexer/language-detector";
 
 export interface AppOptions {
   dbPath?: string;
@@ -26,52 +28,59 @@ export function createApp(options: AppOptions = {}) {
   // Serve static files
   app.use("/style.css", serveStatic({ path: "./public/style.css" }));
 
-  // Homepage - render HTML with articles
-  // Supports ?filter=latest|comments and ?lang=zh|en for language filtering
+  // Homepage - Latest articles feed
+  // Supports ?lang=zh|en for language filtering
   app.get("/", (c) => {
-    const filter = c.req.query("filter") || "latest";
     const lang = c.req.query("lang"); // Optional language filter
 
     // Build language filter clause - matches if blog's languages JSON array contains the lang
     const langClause = lang ? `AND b.languages LIKE '%"${lang}"%'` : "";
 
-    let query: string;
-
-    if (filter === "comments") {
-      // Articles ordered by newest comment (most recent comment first)
-      query = `
-        SELECT
-          a.id, a.url, a.title, a.description, a.cover_image, a.published_at,
-          b.name as blog_name, b.url as blog_url, b.languages as blog_languages,
-          MAX(cs.snapshot_at) as latest_comment_at,
-          (SELECT comment_count FROM comment_snapshots WHERE article_id = a.id ORDER BY snapshot_at DESC LIMIT 1) as comment_count
-        FROM articles a
-        JOIN blogs b ON a.blog_id = b.id
-        JOIN comment_snapshots cs ON a.id = cs.article_id
-        WHERE 1=1
-        ${langClause}
-        GROUP BY a.id
-        ORDER BY latest_comment_at DESC
-        LIMIT 100
-      `;
-    } else {
-      // Default: all articles ordered by published_at DESC
-      query = `
-        SELECT
-          a.id, a.url, a.title, a.description, a.cover_image, a.published_at,
-          b.name as blog_name, b.url as blog_url, b.languages as blog_languages
-        FROM articles a
-        JOIN blogs b ON a.blog_id = b.id
-        WHERE 1=1
-        ${langClause}
-        ORDER BY a.published_at DESC
-        LIMIT 100
-      `;
-    }
+    const query = `
+      SELECT
+        a.id, a.url, a.title, a.description, a.cover_image, a.published_at,
+        b.name as blog_name, b.url as blog_url, b.languages as blog_languages
+      FROM articles a
+      JOIN blogs b ON a.blog_id = b.id
+      WHERE 1=1
+      ${langClause}
+      ORDER BY a.published_at DESC
+      LIMIT 100
+    `;
 
     const articles = db.query(query).all() as any[];
 
-    const html = renderHomepage(articles, filter, lang);
+    const html = renderHomepage(articles, "latest", lang);
+    return c.html(html);
+  });
+
+  // New Comments feed - separate route showing articles with new comments
+  // Supports ?lang=zh|en for language filtering
+  app.get("/comments", (c) => {
+    const lang = c.req.query("lang"); // Optional language filter
+
+    // Build language filter clause - matches if blog's languages JSON array contains the lang
+    const langClause = lang ? `AND b.languages LIKE '%"${lang}"%'` : "";
+
+    const query = `
+      SELECT
+        a.id, a.url, a.title, a.description, a.cover_image, a.published_at,
+        b.name as blog_name, b.url as blog_url, b.languages as blog_languages,
+        MAX(cs.snapshot_at) as latest_comment_at,
+        (SELECT comment_count FROM comment_snapshots WHERE article_id = a.id ORDER BY snapshot_at DESC LIMIT 1) as comment_count
+      FROM articles a
+      JOIN blogs b ON a.blog_id = b.id
+      JOIN comment_snapshots cs ON a.id = cs.article_id
+      WHERE 1=1
+      ${langClause}
+      GROUP BY a.id
+      ORDER BY latest_comment_at DESC
+      LIMIT 100
+    `;
+
+    const articles = db.query(query).all() as any[];
+
+    const html = renderHomepage(articles, "comments", lang);
     return c.html(html);
   });
 
@@ -250,11 +259,11 @@ export function createApp(options: AppOptions = {}) {
         if (eventEmitter) {
           eventEmitter.emitProgress({
             isRunning: stats.processed < stats.total && !stats.cancelled,
-            totalBlogsIndexed: stats.processed,
+            total: stats.total,
+            processed: stats.processed,
             newArticlesFound: stats.newArticlesFound,
             errorsEncountered: stats.failed,
-            lastCrawlAt: null,
-            currentBlogUrl: currentBlog,
+            currentBlog: currentBlog,
           });
         }
       },
@@ -263,6 +272,13 @@ export function createApp(options: AppOptions = {}) {
         // Emit SSE event if eventEmitter is available
         if (eventEmitter) {
           eventEmitter.emitNewArticle(article, blog);
+        }
+      },
+      onNewComment: (article, blog) => {
+        console.log(`[BatchIndexer] Article with comments: "${article.title}" (${article.comment_count} comments)`);
+        // Emit SSE event for new comments
+        if (eventEmitter) {
+          eventEmitter.emitNewComment(article, blog);
         }
       },
       onError: (blog, error) => {
@@ -381,6 +397,18 @@ export function createApp(options: AppOptions = {}) {
               eventEmitter.emitNewArticle(article, blog);
             }
           },
+          onNewComment: (article, blog) => {
+            sendEvent("new_comment", {
+              title: article.title,
+              url: article.url,
+              blogName: blog.name || blog.url,
+              commentCount: article.comment_count,
+            });
+            // Also emit to main event emitter
+            if (eventEmitter) {
+              eventEmitter.emitNewComment(article, blog);
+            }
+          },
           onError: (blog, error) => {
             sendEvent("blog_error", {
               url: blog.url,
@@ -421,5 +449,99 @@ export function createApp(options: AppOptions = {}) {
     });
   });
 
+  // ============================================
+  // Discovery API Endpoints
+  // ============================================
+
+  // POST /api/discovery/run - Run seed source discovery
+  app.post("/api/discovery/run", async (c) => {
+    const language = c.req.query("lang"); // Optional: "en" or "zh"
+
+    console.log(`[API] Running seed discovery${language ? ` (lang=${language})` : ""}`);
+
+    const discovery = new SeedDiscovery(db);
+    const result = await discovery.discoverAll(language);
+
+    return c.json({
+      status: "completed",
+      sourcesProcessed: result.sourcesProcessed,
+      totalDiscovered: result.totalDiscovered,
+      totalAdded: result.totalAdded,
+      errors: result.errors,
+    });
+  });
+
+  // POST /api/blogs/detect-languages - Re-detect languages for blogs with wrong language
+  app.post("/api/blogs/detect-languages", async (c) => {
+    const limit = parseInt(c.req.query("limit") || "100");
+    const targetLang = c.req.query("from") || "zh"; // Default: re-detect blogs marked as Chinese
+
+    console.log(`[API] Re-detecting languages for up to ${limit} blogs (from=${targetLang})`);
+
+    // Find blogs that may have wrong language (default: all marked as Chinese)
+    const blogs = db.query(`
+      SELECT id, url FROM blogs
+      WHERE languages LIKE ?
+      LIMIT ?
+    `).all(`%"${targetLang}"%`, limit) as { id: number; url: string }[];
+
+    let processed = 0;
+    let updated = 0;
+
+    for (const blog of blogs) {
+      try {
+        const html = await fetchHomepageHtml(blog.url);
+        if (html) {
+          const languages = detectLanguages(html, blog.url);
+          if (languages.length > 0) {
+            db.run(`UPDATE blogs SET languages = ? WHERE id = ?`, [
+              JSON.stringify(languages),
+              blog.id,
+            ]);
+            updated++;
+          }
+        }
+        processed++;
+      } catch {
+        // Skip failed fetches
+        processed++;
+      }
+    }
+
+    console.log(`[API] Language re-detection complete: ${processed} processed, ${updated} updated`);
+
+    return c.json({
+      processed,
+      updated,
+    });
+  });
+
   return { app, db, eventEmitter };
+}
+
+/**
+ * Fetch homepage HTML for language detection.
+ */
+async function fetchHomepageHtml(url: string, timeoutMs: number = 10000): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; IndieBlogReader/2.0)",
+        Accept: "text/html",
+      },
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      return await response.text();
+    }
+  } catch {
+    // Ignore errors
+  }
+  return null;
 }

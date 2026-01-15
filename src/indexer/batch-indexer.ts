@@ -7,7 +7,8 @@
 
 import type { Database } from "bun:sqlite";
 import { fetchRss } from "./rss-fetcher";
-import { detectLanguages } from "./language-detector";
+import { detectLanguages, detectArticleLanguage } from "./language-detector";
+import { scrapeCommentCount } from "./comment-scraper";
 import type { Article, Blog } from "./types";
 
 export interface BatchIndexerConfig {
@@ -33,6 +34,8 @@ export interface BatchIndexerEvents {
   onBlogStart?: (blog: Blog) => void;
   onBlogComplete?: (blog: Blog, success: boolean) => void;
   onNewArticle?: (article: Article, blog: Blog) => void;
+  /** Called when an article has comments (new or updated count) */
+  onNewComment?: (article: Article & { comment_count: number }, blog: Blog) => void;
   onError?: (blog: Blog, error: Error) => void;
 }
 
@@ -55,10 +58,10 @@ export class BatchIndexer {
     this.db = db;
 
     // Separate config from events
-    const { onProgress, onBlogStart, onBlogComplete, onNewArticle, onError, ...config } = configAndEvents;
+    const { onProgress, onBlogStart, onBlogComplete, onNewArticle, onNewComment, onError, ...config } = configAndEvents;
 
     this.config = { ...DEFAULT_CONFIG, ...config };
-    this.events = { onProgress, onBlogStart, onBlogComplete, onNewArticle, onError };
+    this.events = { onProgress, onBlogStart, onBlogComplete, onNewArticle, onNewComment, onError };
     this.stats = this.initStats();
   }
 
@@ -133,21 +136,21 @@ export class BatchIndexer {
     return { ...this.stats };
   }
 
-  private getBlogsToProcess(): Blog[] {
+  private getBlogsToProcess(): (Blog & { last_scraped_at: string | null })[] {
     const blogs = this.db
       .query(`
-        SELECT id, url, name, ssg, rss_url, languages, error_count
+        SELECT id, url, name, ssg, rss_url, languages, error_count, last_scraped_at
         FROM blogs
         ORDER BY
           CASE WHEN last_scraped_at IS NULL THEN 0 ELSE 1 END,
           last_scraped_at ASC
       `)
-      .all() as Blog[];
+      .all() as (Blog & { last_scraped_at: string | null })[];
 
     return blogs;
   }
 
-  private async processBlog(blog: Blog): Promise<void> {
+  private async processBlog(blog: Blog & { last_scraped_at: string | null }): Promise<void> {
     if (this.events.onBlogStart) {
       this.events.onBlogStart(blog);
     }
@@ -155,15 +158,33 @@ export class BatchIndexer {
     console.log(`[BatchIndexer] Processing: ${blog.url}`);
 
     let success = false;
+    const isFirstScrape = !blog.last_scraped_at;
 
     try {
+      // Detect blog language on first scrape
+      if (isFirstScrape) {
+        try {
+          const homepageHtml = await this.fetchHomepageHtml(blog.url);
+          if (homepageHtml) {
+            const detectedLanguages = detectLanguages(homepageHtml, blog.url);
+            if (detectedLanguages.length > 0) {
+              this.updateBlogLanguages(blog.id, detectedLanguages);
+            }
+          }
+        } catch (langError) {
+          // Language detection errors are non-fatal
+          console.log(`[BatchIndexer] Language detection failed for ${blog.url}: ${langError}`);
+        }
+      }
+
       const articles = await fetchRss(
         blog.url,
         blog.ssg || "unknown",
         this.config.fetchTimeoutMs
       );
 
-      const newCount = this.saveArticles(blog.id, articles);
+      const savedResults = this.saveArticles(blog.id, articles);
+      const newCount = savedResults.filter(r => r.isNew).length;
       this.stats.newArticlesFound += newCount;
       this.stats.succeeded++;
       success = true;
@@ -171,10 +192,46 @@ export class BatchIndexer {
       // Update blog's last_scraped_at
       this.updateBlogSuccess(blog.id);
 
-      // Emit events for new articles
-      for (const article of articles) {
-        if (this.events.onNewArticle) {
+      // Process each article - emit events and scrape comments for new articles
+      for (const { article, articleId, isNew } of savedResults) {
+        // Emit new article event
+        if (isNew && this.events.onNewArticle) {
           this.events.onNewArticle(article, blog);
+        }
+
+        // Scrape comments for new articles
+        if (isNew) {
+          try {
+            const commentResult = await scrapeCommentCount(
+              article.url,
+              blog.comment_system,
+              this.config.fetchTimeoutMs
+            );
+
+            if (commentResult && commentResult.count > 0) {
+              const commentChanged = this.saveCommentSnapshot(articleId, commentResult.count);
+
+              // Update blog's comment_system if we detected one
+              if (!blog.comment_system && commentResult.system) {
+                this.db.run(
+                  `UPDATE blogs SET comment_system = ? WHERE id = ?`,
+                  [commentResult.system, blog.id]
+                );
+              }
+
+              // Emit new comment event
+              if (commentChanged && this.events.onNewComment) {
+                const articleWithComments = {
+                  ...article,
+                  comment_count: commentResult.count,
+                };
+                this.events.onNewComment(articleWithComments, blog);
+              }
+            }
+          } catch (commentError) {
+            // Comment scraping errors are non-fatal
+            console.log(`[BatchIndexer] Comment scrape failed for ${article.url}: ${commentError}`);
+          }
         }
       }
 
@@ -216,31 +273,55 @@ export class BatchIndexer {
     this.stats.estimatedSecondsRemaining = Math.round((msPerBlog * remainingBlogs) / 1000);
   }
 
-  private saveArticles(blogId: number, articles: Article[]): number {
-    let newCount = 0;
+  /**
+   * Save articles to the database.
+   * @returns Array of { article, articleId, isNew } for each article
+   */
+  private saveArticles(blogId: number, articles: Article[]): Array<{
+    article: Article;
+    articleId: number;
+    isNew: boolean;
+  }> {
+    const results: Array<{ article: Article; articleId: number; isNew: boolean }> = [];
 
     const insertArticle = this.db.prepare(`
       INSERT OR IGNORE INTO articles (blog_id, url, title, description, cover_image, language, published_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
+    const getArticleId = this.db.prepare(`
+      SELECT id FROM articles WHERE url = ?
+    `);
+
     for (const article of articles) {
+      // Detect article language from title and description
+      const detectedLanguage = detectArticleLanguage(
+        article.title,
+        article.description || ""
+      );
+
       const result = insertArticle.run(
         blogId,
         article.url,
         article.title,
         article.description || null,
         article.cover_image || null,
-        article.language || null,
+        detectedLanguage,
         article.published_at || null
       );
 
-      if (result.changes > 0) {
-        newCount++;
+      const isNew = result.changes > 0;
+
+      // Get the article ID (either newly inserted or existing)
+      const row = getArticleId.get(article.url) as { id: number } | null;
+      if (row) {
+        // Update article with detected language
+        const articleWithLang = { ...article, language: detectedLanguage };
+        results.push({ article: articleWithLang, articleId: row.id, isNew });
       }
     }
 
-    return newCount;
+    return results;
   }
 
   private updateBlogSuccess(blogId: number): void {
@@ -255,6 +336,68 @@ export class BatchIndexer {
       `UPDATE blogs SET last_scraped_at = ?, error_count = error_count + 1, last_error = ? WHERE id = ?`,
       [new Date().toISOString(), errorMessage, blogId]
     );
+  }
+
+  /**
+   * Fetch homepage HTML for language detection.
+   */
+  private async fetchHomepageHtml(url: string): Promise<string | null> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.config.fetchTimeoutMs);
+
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; IndieBlogReader/2.0)",
+          Accept: "text/html",
+        },
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        return await response.text();
+      }
+    } catch {
+      // Ignore errors
+    }
+    return null;
+  }
+
+  /**
+   * Update blog languages in the database.
+   */
+  private updateBlogLanguages(blogId: number, languages: string[]): void {
+    this.db.run(
+      `UPDATE blogs SET languages = ? WHERE id = ?`,
+      [JSON.stringify(languages), blogId]
+    );
+  }
+
+  /**
+   * Save comment snapshot for an article.
+   * @returns true if the comment count changed (new or updated)
+   */
+  private saveCommentSnapshot(articleId: number, commentCount: number): boolean {
+    // Get the latest comment count for this article
+    const latest = this.db.query(`
+      SELECT comment_count FROM comment_snapshots
+      WHERE article_id = ?
+      ORDER BY snapshot_at DESC
+      LIMIT 1
+    `).get(articleId) as { comment_count: number } | null;
+
+    // Only save if count changed or this is the first snapshot
+    if (!latest || latest.comment_count !== commentCount) {
+      this.db.run(
+        `INSERT INTO comment_snapshots (article_id, comment_count) VALUES (?, ?)`,
+        [articleId, commentCount]
+      );
+      return true;
+    }
+
+    return false;
   }
 }
 
