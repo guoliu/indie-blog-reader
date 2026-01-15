@@ -8,6 +8,18 @@ import { existsSync, unlinkSync } from "fs";
 
 const TEST_DB_PATH = "data/test-api-discovery.db";
 
+/**
+ * Create a mock fetch function that preserves the preconnect property.
+ */
+function createMockFetch(handler: (url: string | URL | Request) => Promise<Response>): typeof fetch {
+  const mockFetch = handler as typeof fetch;
+  // Copy preconnect from original fetch if it exists
+  if (typeof globalThis.fetch.preconnect === "function") {
+    mockFetch.preconnect = globalThis.fetch.preconnect;
+  }
+  return mockFetch;
+}
+
 describe("Discovery API", () => {
   let db: Database;
   let app: any;
@@ -53,7 +65,7 @@ describe("Discovery API", () => {
 
   test("POST /api/discovery/run discovers blogs from seed sources", async () => {
     // Mock fetch to return test HTML
-    globalThis.fetch = async (url: string | URL | Request) => {
+    globalThis.fetch = createMockFetch(async (url: string | URL | Request) => {
       const urlStr = url.toString();
       if (urlStr.includes("personalsit.es")) {
         return new Response(`
@@ -66,7 +78,7 @@ describe("Discovery API", () => {
       }
       // Return empty for other seed sources
       return new Response("<html><body></body></html>");
-    };
+    });
 
     const res = await app.request("/api/discovery/run?lang=en", {
       method: "POST",
@@ -79,13 +91,13 @@ describe("Discovery API", () => {
   });
 
   test("POST /api/discovery/run filters by language", async () => {
-    globalThis.fetch = async () => {
+    globalThis.fetch = createMockFetch(async () => {
       return new Response(`
         <html><body>
           <a href="https://test-blog.example.com">Test</a>
         </body></html>
       `);
-    };
+    });
 
     // Run with English filter
     const enRes = await app.request("/api/discovery/run?lang=en", {
@@ -118,7 +130,7 @@ describe("Discovery API", () => {
     ]);
 
     // Mock fetch to return English HTML
-    globalThis.fetch = async () => {
+    globalThis.fetch = createMockFetch(async () => {
       return new Response(`
         <html lang="en">
         <head><title>English Blog</title></head>
@@ -127,7 +139,7 @@ describe("Discovery API", () => {
         </body>
         </html>
       `);
-    };
+    });
 
     const res = await app.request("/api/blogs/detect-languages?limit=10", {
       method: "POST",

@@ -259,11 +259,11 @@ export function createApp(options: AppOptions = {}) {
         if (eventEmitter) {
           eventEmitter.emitProgress({
             isRunning: stats.processed < stats.total && !stats.cancelled,
-            totalBlogsIndexed: stats.processed,
+            total: stats.total,
+            processed: stats.processed,
             newArticlesFound: stats.newArticlesFound,
             errorsEncountered: stats.failed,
-            lastCrawlAt: null,
-            currentBlogUrl: currentBlog,
+            currentBlog: currentBlog,
           });
         }
       },
