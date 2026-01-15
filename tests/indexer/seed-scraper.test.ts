@@ -175,7 +175,7 @@ describe("SeedSourceScraper", () => {
 
       // Mock fetch to return test HTML
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = async (url: string | URL | Request) => {
+      const mockFetch = async (url: string | URL | Request) => {
         const urlStr = url.toString();
         if (urlStr.includes("personalsit.es")) {
           return new Response(`
@@ -189,6 +189,7 @@ describe("SeedSourceScraper", () => {
         }
         return new Response("", { status: 404 });
       };
+      globalThis.fetch = Object.assign(mockFetch, { preconnect: originalFetch.preconnect }) as typeof fetch;
 
       try {
         const discovery = new SeedDiscovery(db);
@@ -214,7 +215,7 @@ describe("SeedSourceScraper", () => {
       const { SeedDiscovery } = await import("../../src/indexer/seed-discovery");
 
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = async () => {
+      const mockFetch = async () => {
         return new Response(`
           <html>
           <body>
@@ -223,6 +224,7 @@ describe("SeedSourceScraper", () => {
           </html>
         `);
       };
+      globalThis.fetch = Object.assign(mockFetch, { preconnect: originalFetch.preconnect }) as typeof fetch;
 
       try {
         const discovery = new SeedDiscovery(db);
@@ -256,7 +258,7 @@ describe("SeedSourceScraper", () => {
       ]);
 
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = async () => {
+      const mockFetch = async () => {
         return new Response(`
           <html>
           <body>
@@ -266,6 +268,7 @@ describe("SeedSourceScraper", () => {
           </html>
         `);
       };
+      globalThis.fetch = Object.assign(mockFetch, { preconnect: originalFetch.preconnect }) as typeof fetch;
 
       try {
         const discovery = new SeedDiscovery(db);
@@ -291,9 +294,10 @@ describe("SeedSourceScraper", () => {
       const { SeedDiscovery } = await import("../../src/indexer/seed-discovery");
 
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = async () => {
+      const mockFetch = async () => {
         throw new Error("Network error");
       };
+      globalThis.fetch = Object.assign(mockFetch, { preconnect: originalFetch.preconnect }) as typeof fetch;
 
       try {
         const discovery = new SeedDiscovery(db);
@@ -319,7 +323,7 @@ describe("SeedSourceScraper", () => {
 
       let fetchCount = 0;
       const originalFetch = globalThis.fetch;
-      globalThis.fetch = async (url: string | URL | Request) => {
+      const mockFetch = async (url: string | URL | Request) => {
         fetchCount++;
         return new Response(`
           <html>
@@ -329,6 +333,7 @@ describe("SeedSourceScraper", () => {
           </html>
         `);
       };
+      globalThis.fetch = Object.assign(mockFetch, { preconnect: originalFetch.preconnect }) as typeof fetch;
 
       try {
         const discovery = new SeedDiscovery(db);
