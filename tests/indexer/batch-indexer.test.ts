@@ -7,9 +7,10 @@ import { Database } from "bun:sqlite";
 import { existsSync, unlinkSync } from "fs";
 import { createSchema } from "../../src/db";
 
-const TEST_DB_PATH = "data/test-batch-indexer.db";
+const TEST_DB_PATH_BASE = "data/test-batch-indexer";
 
 describe("BatchIndexer", () => {
+  const TEST_DB_PATH = `${TEST_DB_PATH_BASE}-main.db`;
   let db: Database;
 
   beforeEach(() => {
@@ -216,6 +217,7 @@ describe("BatchIndexer", () => {
 });
 
 describe("BatchIndexer Language Detection", () => {
+  const TEST_DB_PATH = `${TEST_DB_PATH_BASE}-lang.db`;
   let db: Database;
 
   beforeEach(() => {
@@ -340,6 +342,7 @@ describe("BatchIndexer Language Detection", () => {
 });
 
 describe("BatchIndexer Integration", () => {
+  const TEST_DB_PATH = `${TEST_DB_PATH_BASE}-integration.db`;
   let db: Database;
 
   beforeEach(() => {
