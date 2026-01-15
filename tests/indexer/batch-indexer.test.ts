@@ -237,7 +237,8 @@ describe("BatchIndexer Language Detection", () => {
     }
   });
 
-  test(
+  // Skip: Makes real network requests to external blog - flaky in CI
+  test.skip(
     "detects and updates blog languages on first scrape",
     async () => {
       const { BatchIndexer } = await import("../../src/indexer/batch-indexer");
@@ -303,7 +304,8 @@ describe("BatchIndexer Language Detection", () => {
     expect(languages).toEqual(["zh"]);
   });
 
-  test(
+  // Skip: Makes real network requests to external blog - flaky in CI
+  test.skip(
     "detects article language for new articles",
     async () => {
       const { BatchIndexer } = await import("../../src/indexer/batch-indexer");
