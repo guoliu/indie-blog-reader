@@ -8,6 +8,7 @@ import {
   getEventEmitter,
   createSSEStream,
 } from "../../src/sse/event-emitter";
+import type { IndexerProgressData } from "../../src/sse/types";
 import type { Article, Blog } from "../../src/indexer/types";
 
 describe("ArticleEventEmitter", () => {
@@ -106,18 +107,20 @@ describe("ArticleEventEmitter", () => {
 
     emitter.addClient(mockController);
 
-    emitter.emitProgress({
+    const progress: IndexerProgressData = {
       isRunning: true,
-      totalBlogsIndexed: 100,
-      newArticlesFound: 50,
+      total: 100,
+      processed: 50,
+      newArticlesFound: 10,
       errorsEncountered: 5,
-      lastCrawlAt: null,
-      currentBlogUrl: "https://example.com",
-    });
+      currentBlog: "https://example.com",
+    };
+    emitter.emitProgress(progress);
 
     expect(receivedMessages.length).toBe(1);
     expect(receivedMessages[0]).toContain("event: indexer_progress");
-    expect(receivedMessages[0]).toContain('"totalBlogsIndexed":100');
+    expect(receivedMessages[0]).toContain('"total":100');
+    expect(receivedMessages[0]).toContain('"processed":50');
   });
 
   test("broadcasts error events", () => {
@@ -221,15 +224,16 @@ describe("ArticleEventEmitter", () => {
     emitter.addClient(errorController);
 
     // Should not throw even though client throws on enqueue
+    const progress: IndexerProgressData = {
+      isRunning: true,
+      total: 0,
+      processed: 0,
+      newArticlesFound: 0,
+      errorsEncountered: 0,
+      currentBlog: null,
+    };
     expect(() => {
-      emitter.emitProgress({
-        isRunning: true,
-        totalBlogsIndexed: 0,
-        newArticlesFound: 0,
-        errorsEncountered: 0,
-        lastCrawlAt: null,
-        currentBlogUrl: null,
-      });
+      emitter.emitProgress(progress);
     }).not.toThrow();
   });
 
@@ -258,18 +262,64 @@ describe("ArticleEventEmitter", () => {
     emitter.addClient(controller1);
     emitter.addClient(controller2);
 
-    emitter.emitProgress({
+    const progress: IndexerProgressData = {
       isRunning: false,
-      totalBlogsIndexed: 10,
+      total: 10,
+      processed: 10,
       newArticlesFound: 5,
       errorsEncountered: 0,
-      lastCrawlAt: null,
-      currentBlogUrl: null,
-    });
+      currentBlog: null,
+    };
+    emitter.emitProgress(progress);
 
     expect(messages1.length).toBe(1);
     expect(messages2.length).toBe(1);
     expect(messages1[0]).toBe(messages2[0]);
+  });
+
+  test("emits new_comment events", () => {
+    const receivedMessages: string[] = [];
+
+    const mockController = {
+      enqueue: (data: Uint8Array) => {
+        receivedMessages.push(new TextDecoder().decode(data));
+      },
+      close: () => {},
+      error: () => {},
+      desiredSize: 0,
+    } as unknown as ReadableStreamDefaultController;
+
+    emitter.addClient(mockController);
+
+    const article = {
+      title: "Test Article",
+      url: "https://example.com/post",
+      description: "Test description",
+      cover_image: null,
+      language: null,
+      published_at: "2025-01-14",
+      comment_count: 5,
+    };
+
+    const blog: Blog = {
+      id: 1,
+      url: "https://example.com",
+      name: "Test Blog",
+      ssg: null,
+      comment_system: null,
+      rss_url: null,
+      languages: ["en"],
+      last_scraped_at: null,
+      error_count: 0,
+      last_error: null,
+    };
+
+    emitter.emitNewComment(article, blog);
+
+    expect(receivedMessages.length).toBe(1);
+    expect(receivedMessages[0]).toContain("event: new_comment");
+    expect(receivedMessages[0]).toContain("Test Article");
+    expect(receivedMessages[0]).toContain('"comment_count":5');
   });
 });
 

@@ -31,13 +31,11 @@ export function renderHomepage(
     )
     .join("");
 
-  // Build URLs with current filter and language
-  const buildUrl = (filter: string, lang?: string) => {
-    const params = new URLSearchParams();
-    if (filter !== "latest") params.set("filter", filter);
-    if (lang) params.set("lang", lang);
-    const queryString = params.toString();
-    return queryString ? `/?${queryString}` : "/";
+  // Build URLs for language filtering on current feed
+  const buildLangUrl = (lang?: string) => {
+    const basePath = activeFilter === "comments" ? "/comments" : "/";
+    if (!lang) return basePath;
+    return `${basePath}${basePath === "/" ? "?" : "?"}lang=${lang}`;
   };
 
   return `<!DOCTYPE html>
@@ -52,13 +50,13 @@ export function renderHomepage(
   <header>
     <h1>Indie Blog Reader</h1>
     <nav class="filters">
-      <a href="${buildUrl("latest", activeLang)}" class="${activeFilter === "latest" ? "active" : ""}">Latest</a>
-      <a href="${buildUrl("comments", activeLang)}" class="${activeFilter === "comments" ? "active" : ""}">New Comments</a>
+      <a href="/${activeLang ? `?lang=${activeLang}` : ""}" class="${activeFilter === "latest" ? "active" : ""}">Latest</a>
+      <a href="/comments${activeLang ? `?lang=${activeLang}` : ""}" class="${activeFilter === "comments" ? "active" : ""}">New Comments</a>
     </nav>
     <nav class="language-switcher">
-      <a href="${buildUrl(activeFilter)}" class="${!activeLang ? "active" : ""}">All</a>
-      <a href="${buildUrl(activeFilter, "zh")}" class="${activeLang === "zh" ? "active" : ""}">中文</a>
-      <a href="${buildUrl(activeFilter, "en")}" class="${activeLang === "en" ? "active" : ""}">English</a>
+      <a href="${buildLangUrl()}" class="${!activeLang ? "active" : ""}">All</a>
+      <a href="${buildLangUrl("zh")}" class="${activeLang === "zh" ? "active" : ""}">中文</a>
+      <a href="${buildLangUrl("en")}" class="${activeLang === "en" ? "active" : ""}">English</a>
     </nav>
   </header>
 
@@ -103,10 +101,24 @@ export function renderHomepage(
         document.getElementById('live-indicator').classList.add('connected');
       };
 
-      // Listen for specific event types
+      // Detect current feed based on path (not query param)
+      const isCommentsFeed = window.location.pathname === '/comments';
+
       eventSource.addEventListener('new_article', (event) => {
+        // Only handle in Latest view (homepage)
+        if (isCommentsFeed) return;
+
         const data = JSON.parse(event.data);
-        prependArticle(data.article, data.blog);
+        insertArticleSorted(data.article, data.blog, 'published_at');
+      });
+
+      eventSource.addEventListener('new_comment', (event) => {
+        // Only handle in Comments feed
+        if (!isCommentsFeed) return;
+
+        const data = JSON.parse(event.data);
+        // For comments view, insert at top since new comments are newest
+        insertArticleSorted(data.article, data.blog, 'published_at');
       });
 
       eventSource.addEventListener('indexer_progress', (event) => {
@@ -130,7 +142,8 @@ export function renderHomepage(
       const el = document.getElementById('indexer-progress');
       if (!el) return;
 
-      if (progress.isRunning) {
+      // Add defensive null checks to prevent "undefined/undefined"
+      if (progress.isRunning && progress.total !== undefined && progress.processed !== undefined) {
         const pct = progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
         const current = progress.currentBlog ? ' · ' + truncate(progress.currentBlog, 30) : '';
         el.textContent = pct + '% (' + progress.processed + '/' + progress.total + ')' + current;
@@ -140,11 +153,23 @@ export function renderHomepage(
       }
     }
 
-    function prependArticle(article, blog) {
+    function insertArticleSorted(article, blog, sortField) {
       const articlesSection = document.querySelector('.articles');
       const emptyMessage = articlesSection.querySelector('.empty');
       if (emptyMessage) {
         emptyMessage.remove();
+      }
+
+      // Check if article already exists (avoid duplicates)
+      const existingCard = articlesSection.querySelector('a[href="' + article.url + '"]');
+      if (existingCard) {
+        // Update existing card's animation
+        const card = existingCard.closest('.card');
+        if (card) {
+          card.classList.add('new-article');
+          setTimeout(() => card.classList.remove('new-article'), 500);
+        }
+        return;
       }
 
       const card = document.createElement('article');
@@ -159,7 +184,27 @@ export function renderHomepage(
         </div>
       \`;
 
-      articlesSection.insertBefore(card, articlesSection.firstChild);
+      // Find correct insertion point by comparing dates
+      const articleDate = new Date(article[sortField] || article.published_at);
+      const existingCards = articlesSection.querySelectorAll('.card');
+
+      let insertBefore = null;
+      for (const existing of existingCards) {
+        const timeEl = existing.querySelector('time');
+        if (timeEl) {
+          const existingDate = new Date(timeEl.getAttribute('datetime'));
+          if (articleDate > existingDate) {
+            insertBefore = existing;
+            break;
+          }
+        }
+      }
+
+      if (insertBefore) {
+        articlesSection.insertBefore(card, insertBefore);
+      } else {
+        articlesSection.appendChild(card);
+      }
 
       // Animate the new card
       setTimeout(() => card.classList.remove('new-article'), 500);

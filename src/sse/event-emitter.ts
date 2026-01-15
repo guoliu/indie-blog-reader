@@ -4,40 +4,24 @@
  */
 
 import type { Article, Blog } from "../indexer/types";
+import type {
+  IndexerProgressData,
+  IndexerProgressEvent,
+  NewArticleEvent,
+  NewCommentEvent,
+  ErrorEvent,
+  SSEEvent,
+} from "./types";
 
-export interface IndexerProgressEvent {
-  type: "indexer_progress";
-  data: {
-    isRunning: boolean;
-    totalBlogsIndexed: number;
-    newArticlesFound: number;
-    errorsEncountered: number;
-    lastCrawlAt: string | null;
-    currentBlogUrl: string | null;
-  };
-}
-
-export interface NewArticleEvent {
-  type: "new_article";
-  data: {
-    article: Article;
-    blog: {
-      id: number;
-      name: string | null;
-      url: string;
-    };
-  };
-}
-
-export interface ErrorEvent {
-  type: "error";
-  data: {
-    message: string;
-    blogUrl: string;
-  };
-}
-
-export type SSEEvent = IndexerProgressEvent | NewArticleEvent | ErrorEvent;
+// Re-export types for consumers
+export type {
+  IndexerProgressData,
+  IndexerProgressEvent,
+  NewArticleEvent,
+  NewCommentEvent,
+  ErrorEvent,
+  SSEEvent,
+} from "./types";
 
 export class ArticleEventEmitter {
   private clients: Set<{
@@ -102,20 +86,36 @@ export class ArticleEventEmitter {
   /**
    * Emit indexer progress to all clients.
    */
-  emitProgress(stats: {
-    isRunning: boolean;
-    totalBlogsIndexed: number;
-    newArticlesFound: number;
-    errorsEncountered: number;
-    lastCrawlAt: string | null;
-    currentBlogUrl: string | null;
-  }): void {
+  emitProgress(stats: IndexerProgressData): void {
     const event: IndexerProgressEvent = {
       type: "indexer_progress",
       data: stats,
     };
 
     this.broadcast(event);
+  }
+
+  /**
+   * Emit a new comment event to all clients.
+   * Used when an article has new comments.
+   */
+  emitNewComment(
+    article: Article & { comment_count: number },
+    blog: Blog
+  ): void {
+    const event: NewCommentEvent = {
+      type: "new_comment",
+      data: {
+        article,
+        blog: {
+          id: blog.id,
+          name: blog.name,
+          url: blog.url,
+        },
+      },
+    };
+
+    this.broadcast(event, blog.languages);
   }
 
   /**

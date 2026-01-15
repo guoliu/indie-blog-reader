@@ -215,6 +215,120 @@ describe("BatchIndexer", () => {
   });
 });
 
+describe("BatchIndexer Language Detection", () => {
+  let db: Database;
+
+  beforeEach(() => {
+    if (existsSync(TEST_DB_PATH)) {
+      unlinkSync(TEST_DB_PATH);
+    }
+    db = new Database(TEST_DB_PATH);
+    createSchema(db);
+  });
+
+  afterEach(() => {
+    if (db) {
+      db.close();
+    }
+    if (existsSync(TEST_DB_PATH)) {
+      unlinkSync(TEST_DB_PATH);
+    }
+  });
+
+  test("detects and updates blog languages on first scrape", async () => {
+    const { BatchIndexer } = await import("../../src/indexer/batch-indexer");
+
+    // Setup: blog with default ["zh"] language (wrong default)
+    // Using a real English blog that we know has English content
+    db.run(`INSERT INTO blogs (url, name, languages) VALUES (?, ?, ?)`, [
+      "https://blog.jim-nielsen.com",
+      "Jim Nielsen's Blog",
+      '["zh"]', // Wrong default - should be detected as English
+    ]);
+
+    const indexer = new BatchIndexer(db, {
+      concurrency: 1,
+      fetchTimeoutMs: 10000,
+    });
+
+    await indexer.runBatch();
+
+    // Assert: language should be updated from ["zh"] to include "en"
+    const blog = db.query(`SELECT languages FROM blogs WHERE url = ?`).get(
+      "https://blog.jim-nielsen.com"
+    ) as { languages: string } | null;
+
+    expect(blog).not.toBeNull();
+    const languages = JSON.parse(blog!.languages);
+    // Should have detected English
+    expect(languages).toContain("en");
+    // Should NOT still have the default Chinese (unless it's actually a bilingual blog)
+    // But Jim Nielsen's blog is English-only, so:
+    expect(languages).not.toContain("zh");
+  });
+
+  test("does not re-detect languages for already scraped blogs", async () => {
+    const { BatchIndexer } = await import("../../src/indexer/batch-indexer");
+
+    // Setup: blog that was already scraped (has last_scraped_at)
+    const now = new Date().toISOString();
+    db.run(`INSERT INTO blogs (url, name, languages, last_scraped_at) VALUES (?, ?, ?, ?)`, [
+      "https://example.com",
+      "Example Blog",
+      '["zh"]', // Already has a language set
+      now, // Already scraped
+    ]);
+
+    const indexer = new BatchIndexer(db, {
+      concurrency: 1,
+      fetchTimeoutMs: 5000,
+    });
+
+    await indexer.runBatch();
+
+    // Assert: language should NOT have changed (we skip detection for already-scraped blogs)
+    const blog = db.query(`SELECT languages FROM blogs WHERE url = ?`).get(
+      "https://example.com"
+    ) as { languages: string } | null;
+
+    expect(blog).not.toBeNull();
+    const languages = JSON.parse(blog!.languages);
+    // Should still be the original value
+    expect(languages).toEqual(["zh"]);
+  });
+
+  test("detects article language for new articles", async () => {
+    const { BatchIndexer } = await import("../../src/indexer/batch-indexer");
+
+    // Setup: use a real blog with known English articles
+    db.run(`INSERT INTO blogs (url, name, languages) VALUES (?, ?, ?)`, [
+      "https://blog.jim-nielsen.com",
+      "Jim Nielsen's Blog",
+      '["en"]',
+    ]);
+
+    const indexer = new BatchIndexer(db, {
+      concurrency: 1,
+      fetchTimeoutMs: 10000,
+    });
+
+    await indexer.runBatch();
+
+    // Check that articles were saved with detected language
+    const articles = db.query(`SELECT language FROM articles LIMIT 5`).all() as { language: string | null }[];
+
+    // At least some articles should exist
+    expect(articles.length).toBeGreaterThan(0);
+
+    // Articles should have detected language (not null)
+    for (const article of articles) {
+      expect(article.language).not.toBeNull();
+      // Since it's an English blog, should be 'en'
+      expect(article.language).toBe("en");
+    }
+  });
+});
+
 describe("BatchIndexer Integration", () => {
   let db: Database;
 
